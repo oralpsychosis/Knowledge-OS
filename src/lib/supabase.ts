@@ -12,7 +12,16 @@ export const supabase = url && key ? createClient(url, key) : null;
 
 export async function signInWithGoogle() {
   if (!supabase) return;
-  await supabase.auth.signInWithOAuth({ provider: "google" });
+  await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+      queryParams: {
+        prompt: 'select_account',
+        access_type: 'offline',
+      },
+    },
+  });
 }
 
 export async function signOut() {

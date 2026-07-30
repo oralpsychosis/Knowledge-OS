@@ -130,7 +130,6 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     const unsub = subscribeToRemoteChanges(auth.user.id, (newState) => {
       const json = JSON.stringify(newState);
       // Only hydrate if the remote version is different from what we last saved
-      // to avoid infinite loops or clobbering active edits
       if (json !== lastSavedRef.current && json !== remoteVersionRef.current) {
         dispatch({ type: "hydrate", state: newState });
         remoteVersionRef.current = json;
@@ -144,10 +143,8 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     
-    // Always save locally
     saveStateDebounced(state);
 
-    // Sync to remote if authenticated
     if (auth.user) {
       const json = JSON.stringify(state);
       if (json !== lastSavedRef.current) {
@@ -164,7 +161,6 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
           }
         };
         
-        // Debounce remote sync slightly more than local
         const timer = setTimeout(performSync, 800);
         return () => clearTimeout(timer);
       }

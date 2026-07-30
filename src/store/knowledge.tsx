@@ -5,12 +5,15 @@ import {
   useMemo,
   useReducer,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import type { JSONContent, KnowledgeOSState, KnowledgePage } from "@/lib/types";
 import { loadState, saveStateDebounced } from "@/lib/storage";
 import { addPage, deletePageAndDescendants, seedState } from "@/lib/pages";
 import { useAuth } from "@/lib/auth-context";
+import { subscribeToRemoteChanges } from "@/lib/supabase";
+import { toast } from "sonner";
 
 type Action =
   | { type: "hydrate"; state: KnowledgeOSState }
@@ -77,6 +80,7 @@ function reducer(state: KnowledgeOSState, action: Action): KnowledgeOSState {
 interface Ctx {
   state: KnowledgeOSState;
   ready: boolean;
+  syncing: boolean;
   activePage: KnowledgePage | null;
   select: (id: string | null) => void;
   addPage: (parentId?: string | null) => void;
@@ -90,39 +94,88 @@ const KnowledgeContext = createContext<Ctx | null>(null);
 
 export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState);
-  const ready = useRef(false);
-  const [, force] = useReducer((n: number) => n + 1, 0);
+  const [ready, setReady] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const auth = useAuth();
   const lastSavedRef = useRef("");
+  const remoteVersionRef = useRef("");
 
+  // Hydration logic
   useEffect(() => {
-    (async () => {
-      // Try remote first if logged in, fall back to local
+    let active = true;
+    const init = async () => {
+      setReady(false);
+      
+      // Try remote first if logged in
       const remote = auth.user ? await auth.fetchRemote() : null;
+      if (!active) return;
+
       const loaded = remote ?? (await loadState()) ?? seedState();
       dispatch({ type: "hydrate", state: loaded });
-      ready.current = true;
-      force();
-    })();
+      
+      if (remote) {
+        remoteVersionRef.current = JSON.stringify(remote);
+      }
+      
+      setReady(true);
+    };
+    init();
+    return () => { active = false; };
   }, [auth.user]);
 
+  // Real-time subscription
   useEffect(() => {
-    if (!ready.current) return;
+    if (!auth.user || !ready) return;
+
+    const unsub = subscribeToRemoteChanges(auth.user.id, (newState) => {
+      const json = JSON.stringify(newState);
+      // Only hydrate if the remote version is different from what we last saved
+      // to avoid infinite loops or clobbering active edits
+      if (json !== lastSavedRef.current && json !== remoteVersionRef.current) {
+        dispatch({ type: "hydrate", state: newState });
+        remoteVersionRef.current = json;
+      }
+    });
+
+    return unsub;
+  }, [auth.user, ready]);
+
+  // Persistence logic
+  useEffect(() => {
+    if (!ready) return;
+    
+    // Always save locally
     saveStateDebounced(state);
-    // Also sync to Supabase when user is authenticated
+
+    // Sync to remote if authenticated
     if (auth.user) {
       const json = JSON.stringify(state);
       if (json !== lastSavedRef.current) {
         lastSavedRef.current = json;
-        auth.syncToRemote(state);
+        setSyncing(true);
+        
+        const performSync = async () => {
+          try {
+            await auth.syncToRemote(state);
+            setSyncing(false);
+          } catch (err) {
+            setSyncing(false);
+            toast.error("Sync failed. Checking connection...");
+          }
+        };
+        
+        // Debounce remote sync slightly more than local
+        const timer = setTimeout(performSync, 800);
+        return () => clearTimeout(timer);
       }
     }
-  }, [state, auth.user]);
+  }, [state, auth.user, ready]);
 
   const value = useMemo<Ctx>(
     () => ({
       state,
-      ready: ready.current,
+      ready,
+      syncing,
       activePage: state.activePageId ? (state.pages[state.activePageId] ?? null) : null,
       select: (id) => dispatch({ type: "select", id }),
       addPage: (parentId = null) => dispatch({ type: "add", parentId }),
@@ -131,7 +184,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
       patchPage: (id, patch) => dispatch({ type: "patch", id, patch }),
       setContent: (id, content) => dispatch({ type: "setContent", id, content }),
     }),
-    [state],
+    [state, ready, syncing]
   );
 
   return <KnowledgeContext.Provider value={value}>{children}</KnowledgeContext.Provider>;

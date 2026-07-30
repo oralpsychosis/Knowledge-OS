@@ -1,5 +1,5 @@
 import { motion } from "motion/react";
-import { Plus, Hexagon, PanelLeftClose, PanelLeftOpen, Home, LogOut } from "lucide-react";
+import { Plus, Hexagon, PanelLeftClose, PanelLeftOpen, Home, LogOut, CloudCheck, CloudUpload } from "lucide-react";
 import { useKnowledge } from "@/store/knowledge";
 import { PageTree } from "./page-tree";
 import { FocusAudio } from "./focus-audio";
@@ -14,7 +14,7 @@ export function Sidebar({
   collapsed: boolean;
   onToggle: () => void;
 }) {
-  const { addPage, select, state } = useKnowledge();
+  const { addPage, select, state, syncing } = useKnowledge();
   const auth = useAuth();
   const onHome = state.activePageId === null;
 
@@ -30,10 +30,21 @@ export function Sidebar({
           <Hexagon className="h-4 w-4 text-violet-200" />
         </div>
         {!collapsed && (
-          <div className="min-w-0">
-            <h1 className="truncate text-[13px] font-semibold tracking-[0.14em] text-white/90">
-              KNOWLEDGE OS
-            </h1>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between">
+              <h1 className="truncate text-[13px] font-semibold tracking-[0.14em] text-white/90">
+                KNOWLEDGE OS
+              </h1>
+              {auth.user && (
+                <div className="flex items-center gap-1">
+                  {syncing ? (
+                    <CloudUpload className="h-3 w-3 text-violet-400 animate-pulse" />
+                  ) : (
+                    <CloudCheck className="h-3 w-3 text-emerald-400/60" />
+                  )}
+                </div>
+              )}
+            </div>
             <div className="mt-1 flex items-center gap-1.5">
               <motion.span
                 animate={{ scale: [1, 1.35, 1], opacity: [1, 0.55, 1] }}
@@ -41,7 +52,7 @@ export function Sidebar({
                 className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)]"
               />
               <span className="text-[10px] uppercase tracking-widest text-white/40">
-                Local engine online
+                {auth.user ? "Cloud Sync Active" : "Local engine online"}
               </span>
             </div>
           </div>

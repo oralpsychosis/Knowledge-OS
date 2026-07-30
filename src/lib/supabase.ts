@@ -50,14 +50,17 @@ const TABLE = "documents";
 export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState | null> {
   if (!supabase) return null;
   try {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from(TABLE)
       .select("state")
       .eq("user_id", userId)
-      .single();
+      .maybeSingle();
+    
+    if (error) throw error;
     if (data?.state) return data.state as KnowledgeOSState;
     return null;
-  } catch {
+  } catch (err) {
+    console.error("Failed to fetch remote state:", err);
     return null;
   }
 }
@@ -65,11 +68,39 @@ export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState
 export async function upsertRemoteState(userId: string, state: KnowledgeOSState) {
   if (!supabase) return;
   try {
-    await supabase.from(TABLE).upsert(
+    const { error } = await supabase.from(TABLE).upsert(
       { user_id: userId, state, updated_at: new Date().toISOString() },
       { onConflict: "user_id" },
     );
-  } catch {
-    /* sync failure — silent */
+    if (error) throw error;
+  } catch (err) {
+    console.error("Failed to sync to remote:", err);
+    throw err;
   }
+}
+
+export function subscribeToRemoteChanges(userId: string, onUpdate: (state: KnowledgeOSState) => void) {
+  if (!supabase) return () => {};
+  
+  const channel = supabase
+    .channel(`sync:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: TABLE,
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload) => {
+        if (payload.new && (payload.new as any).state) {
+          onUpdate((payload.new as any).state as KnowledgeOSState);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }

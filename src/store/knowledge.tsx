@@ -98,13 +98,11 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const [syncing, setSyncing] = useState(false);
   const auth = useAuth();
   
-  // Track what we last saved to avoid echoing our own changes back from the subscription
   const lastSavedRef = useRef("");
   const remoteVersionRef = useRef("");
 
   // 1. Initial Load & Auth Change
   useEffect(() => {
-    // Don't do anything until auth loading is finished
     if (auth.loading) return;
 
     let active = true;
@@ -114,20 +112,19 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
       let loaded: KnowledgeOSState | null = null;
 
       if (auth.user) {
-        // Logged in: Fetch from Cloud (Primary)
+        // AUTHENTICATED: Cloud is primary
         loaded = await auth.fetchRemote();
         if (loaded) {
           toast.success("Cloud workspace loaded");
         } else {
-          // New cloud user: migrate local state to cloud if it exists, or seed
+          // New user: try to migrate existing local state or start fresh
           const local = await loadState();
           loaded = local ?? seedState();
-          // Immediately trigger a sync to create the remote record
-          auth.syncToRemote(loaded);
-          toast.info("Started new cloud workspace");
+          await auth.syncToRemote(loaded);
+          toast.info("Started cloud sync for your workspace");
         }
       } else {
-        // Guest: Fetch from Local (Secondary)
+        // GUEST: Local is primary
         loaded = await loadState();
         if (!loaded) loaded = seedState();
       }
@@ -145,17 +142,17 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, [auth.user, auth.loading]);
 
-  // 2. Real-time Cloud Subscription
+  // 2. Real-time Subscription
   useEffect(() => {
     if (!auth.user || !ready) return;
 
     const unsub = subscribeToRemoteChanges(auth.user.id, (newState) => {
       const json = JSON.stringify(newState);
-      // Only hydrate if this update actually came from another device/tab
+      // Only hydrate if the update is truly new and not our own recent save
       if (json !== lastSavedRef.current && json !== remoteVersionRef.current) {
         dispatch({ type: "hydrate", state: newState });
         remoteVersionRef.current = json;
-        toast.info("Workspace updated from cloud");
+        toast.info("Remote changes synced");
       }
     });
 
@@ -168,10 +165,10 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     
     const json = JSON.stringify(state);
 
-    // Local mirror is always maintained for performance/offline
+    // Maintain local mirror as a performance cache/offline copy
     saveStateDebounced(state);
 
-    // Sync to remote if authenticated and state has changed
+    // Sync to Supabase if authenticated and changes detected
     if (auth.user && json !== lastSavedRef.current) {
       setSyncing(true);
       
@@ -182,12 +179,12 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
           setSyncing(false);
         } catch (err) {
           setSyncing(false);
-          // Only show error toast once every few minutes to avoid spam
-          console.error("Sync failed:", err);
+          console.error("Cloud sync failed:", err);
         }
       };
       
-      const timer = setTimeout(performSync, 1000); // 1s debounce for cloud
+      // Debounce the cloud sync to avoid hitting rate limits
+      const timer = setTimeout(performSync, 800);
       return () => clearTimeout(timer);
     }
   }, [state, auth.user, ready]);

@@ -21,6 +21,7 @@ type Action =
   | { type: "add"; parentId: string | null }
   | { type: "addWithContent"; parentId: string | null; title: string; content: JSONContent }
   | { type: "delete"; id: string }
+  | { type: "move"; id: string; direction: "up" | "down" }
   | { type: "patch"; id: string; patch: Partial<KnowledgePage> }
   | { type: "setContent"; id: string; content: JSONContent };
 
@@ -50,6 +51,33 @@ function reducer(state: KnowledgeOSState, action: Action): KnowledgeOSState {
     }
     case "delete":
       return deletePageAndDescendants(state, action.id);
+    case "move": {
+      const page = state.pages[action.id];
+      if (!page) return state;
+
+      const parentId = page.parentId;
+      const list = parentId ? [...(state.pages[parentId]?.childrenIds || [])] : [...state.rootOrder];
+      const idx = list.indexOf(action.id);
+      if (idx === -1) return state;
+
+      const newIdx = action.direction === "up" ? idx - 1 : idx + 1;
+      if (newIdx < 0 || newIdx >= list.length) return state;
+
+      // Swap elements
+      [list[idx], list[newIdx]] = [list[newIdx], list[idx]];
+
+      if (parentId) {
+        return {
+          ...state,
+          pages: {
+            ...state.pages,
+            [parentId]: { ...state.pages[parentId], childrenIds: list, updatedAt: Date.now() },
+          },
+        };
+      } else {
+        return { ...state, rootOrder: list };
+      }
+    }
     case "patch": {
       const page = state.pages[action.id];
       if (!page) return state;
@@ -86,6 +114,7 @@ interface Ctx {
   addPage: (parentId?: string | null) => void;
   addPageWithContent: (parentId: string | null, title: string, content: JSONContent) => void;
   deletePage: (id: string) => void;
+  movePage: (id: string, direction: "up" | "down") => void;
   patchPage: (id: string, patch: Partial<KnowledgePage>) => void;
   setContent: (id: string, content: JSONContent) => void;
 }
@@ -101,30 +130,22 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const lastSavedRef = useRef("");
   const remoteVersionRef = useRef("");
 
-  // 1. Initial Load & Auth Change
   useEffect(() => {
     if (auth.loading) return;
 
     let active = true;
     const init = async () => {
       setReady(false);
-      
       let loaded: KnowledgeOSState | null = null;
 
       if (auth.user) {
-        // AUTHENTICATED: Cloud is primary
         loaded = await auth.fetchRemote();
-        if (loaded) {
-          toast.success("Cloud workspace loaded");
-        } else {
-          // New user: try to migrate existing local state or start fresh
+        if (!loaded) {
           const local = await loadState();
           loaded = local ?? seedState();
           await auth.syncToRemote(loaded);
-          toast.info("Started cloud sync for your workspace");
         }
       } else {
-        // GUEST: Local is primary
         loaded = await loadState();
         if (!loaded) loaded = seedState();
       }
@@ -142,49 +163,36 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     return () => { active = false; };
   }, [auth.user, auth.loading]);
 
-  // 2. Real-time Subscription
   useEffect(() => {
     if (!auth.user || !ready) return;
 
     const unsub = subscribeToRemoteChanges(auth.user.id, (newState) => {
       const json = JSON.stringify(newState);
-      // Only hydrate if the update is truly new and not our own recent save
       if (json !== lastSavedRef.current && json !== remoteVersionRef.current) {
         dispatch({ type: "hydrate", state: newState });
         remoteVersionRef.current = json;
-        toast.info("Remote changes synced");
       }
     });
 
     return unsub;
   }, [auth.user, ready]);
 
-  // 3. Auto-save Persistence
   useEffect(() => {
     if (!ready) return;
-    
     const json = JSON.stringify(state);
-
-    // Maintain local mirror as a performance cache/offline copy
     saveStateDebounced(state);
 
-    // Sync to Supabase if authenticated and changes detected
     if (auth.user && json !== lastSavedRef.current) {
       setSyncing(true);
-      
-      const performSync = async () => {
+      const timer = setTimeout(async () => {
         try {
           await auth.syncToRemote(state);
           lastSavedRef.current = JSON.stringify(state);
           setSyncing(false);
         } catch (err) {
           setSyncing(false);
-          console.error("Cloud sync failed:", err);
         }
-      };
-      
-      // Debounce the cloud sync to avoid hitting rate limits
-      const timer = setTimeout(performSync, 800);
+      }, 800);
       return () => clearTimeout(timer);
     }
   }, [state, auth.user, ready]);
@@ -199,6 +207,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
       addPage: (parentId = null) => dispatch({ type: "add", parentId }),
       addPageWithContent: (parentId, title, content) => dispatch({ type: "addWithContent", parentId, title, content }),
       deletePage: (id) => dispatch({ type: "delete", id }),
+      movePage: (id, direction) => dispatch({ type: "move", id, direction }),
       patchPage: (id, patch) => dispatch({ type: "patch", id, patch }),
       setContent: (id, content) => dispatch({ type: "setContent", id, content }),
     }),

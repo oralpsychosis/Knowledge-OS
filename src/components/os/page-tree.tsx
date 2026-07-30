@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronRight, FileText, Plus, Trash2, Check } from "lucide-react";
+import { ChevronRight, FileText, Plus, Trash2, Check, ChevronUp, ChevronDown } from "lucide-react";
 import { useKnowledge } from "@/store/knowledge";
 
 function Row({ id, depth }: { id: string; depth: number }) {
-  const { state, select, addPage, deletePage } = useKnowledge();
+  const { state, select, addPage, deletePage, movePage } = useKnowledge();
   const page = state.pages[id];
   const [expanded, setExpanded] = useState(true);
   const [confirming, setConfirming] = useState(false);
@@ -12,6 +12,13 @@ function Row({ id, depth }: { id: string; depth: number }) {
   if (!page) return null;
   const active = state.activePageId === id;
   const hasChildren = page.childrenIds.length > 0;
+
+  // Find position in sibling list
+  const parentId = page.parentId;
+  const siblings = parentId ? (state.pages[parentId]?.childrenIds || []) : state.rootOrder;
+  const idx = siblings.indexOf(id);
+  const isFirst = idx === 0;
+  const isLast = idx === siblings.length - 1;
 
   return (
     <div>
@@ -26,7 +33,6 @@ function Row({ id, depth }: { id: string; depth: number }) {
             ? "os-glow-active border-white/10 bg-violet-500/12 text-white"
             : "border-transparent text-white/60 hover:bg-white/5 hover:text-white/90"
         }`}
-
         style={{ paddingLeft: 6 + depth * 14 }}
       >
         <button
@@ -59,6 +65,28 @@ function Row({ id, depth }: { id: string; depth: number }) {
         <span className="min-w-0 flex-1 truncate">{page.title || "Untitled"}</span>
 
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            type="button"
+            disabled={isFirst}
+            onClick={(e) => {
+              e.stopPropagation();
+              movePage(id, "up");
+            }}
+            className={`flex h-6 w-6 items-center justify-center rounded-md text-white/45 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:hover:bg-transparent`}
+          >
+            <ChevronUp className="h-3 w-3" />
+          </button>
+          <button
+            type="button"
+            disabled={isLast}
+            onClick={(e) => {
+              e.stopPropagation();
+              movePage(id, "down");
+            }}
+            className={`flex h-6 w-6 items-center justify-center rounded-md text-white/45 hover:bg-white/10 hover:text-white disabled:opacity-20 disabled:hover:bg-transparent`}
+          >
+            <ChevronDown className="h-3 w-3" />
+          </button>
           <button
             type="button"
             title="Add sub-page"

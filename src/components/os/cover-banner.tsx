@@ -1,6 +1,8 @@
-import { ImagePlus, X } from "lucide-react";
+import { ImagePlus, Library, X } from "lucide-react";
+import { useState } from "react";
 import { motion } from "motion/react";
 import { readFileAsDataURL } from "@/lib/storage";
+import { CoverPickerModal } from "./cover-picker-modal";
 
 export function CoverBanner({
   cover,
@@ -9,6 +11,8 @@ export function CoverBanner({
   cover?: string;
   onChange: (v: string | undefined) => void;
 }) {
+  const [showPicker, setShowPicker] = useState(false);
+
   return (
     <div className="group relative h-64 w-full overflow-hidden">
       {cover ? (
@@ -23,9 +27,18 @@ export function CoverBanner({
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#08080A] via-transparent to-transparent" />
 
       <div className="absolute right-6 top-6 flex items-center gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <button
+          type="button"
+          onClick={() => setShowPicker(true)}
+          className="flex cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-black/50 px-3 py-1.5 text-[12px] text-white/80 backdrop-blur-xl transition-colors hover:border-violet-400/40 hover:text-white"
+        >
+          <Library className="h-3.5 w-3.5" />
+          Gallery
+        </button>
+
         <label className="flex cursor-pointer items-center gap-2 rounded-full border border-white/15 bg-black/50 px-3 py-1.5 text-[12px] text-white/80 backdrop-blur-xl transition-colors hover:border-violet-400/40 hover:text-white">
           <ImagePlus className="h-3.5 w-3.5" />
-          {cover ? "Change Cover" : "Add Cover"}
+          {cover ? "Upload New" : "Upload Image"}
           <input
             type="file"
             accept="image/*"
@@ -48,6 +61,12 @@ export function CoverBanner({
           </button>
         )}
       </div>
+
+      <CoverPickerModal
+        open={showPicker}
+        onOpenChange={setShowPicker}
+        onSelect={onChange}
+      />
     </div>
   );
 }

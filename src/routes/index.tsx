@@ -4,6 +4,7 @@ import { KnowledgeProvider } from "@/store/knowledge";
 import { Sidebar } from "@/components/os/sidebar";
 import { Canvas } from "@/components/os/canvas";
 import { AmbientBackground } from "@/components/os/ambient-background";
+import { SyncTestBadge } from "@/components/os/sync-test-badge";
 
 
 export const Route = createFileRoute("/")({
@@ -38,7 +39,7 @@ function Index() {
         <Sidebar collapsed={collapsed} onToggle={() => setCollapsed((v) => !v)} />
         <Canvas />
       </div>
+      <SyncTestBadge />
     </KnowledgeProvider>
   );
 }
-

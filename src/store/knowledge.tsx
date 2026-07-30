@@ -97,73 +97,98 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const auth = useAuth();
+  
+  // Track what we last saved to avoid echoing our own changes back from the subscription
   const lastSavedRef = useRef("");
   const remoteVersionRef = useRef("");
 
-  // Hydration logic
+  // 1. Initial Load & Auth Change
   useEffect(() => {
+    // Don't do anything until auth loading is finished
+    if (auth.loading) return;
+
     let active = true;
     const init = async () => {
       setReady(false);
       
-      // Try remote first if logged in
-      const remote = auth.user ? await auth.fetchRemote() : null;
-      if (!active) return;
+      let loaded: KnowledgeOSState | null = null;
 
-      const loaded = remote ?? (await loadState()) ?? seedState();
-      dispatch({ type: "hydrate", state: loaded });
-      
-      if (remote) {
-        remoteVersionRef.current = JSON.stringify(remote);
+      if (auth.user) {
+        // Logged in: Fetch from Cloud (Primary)
+        loaded = await auth.fetchRemote();
+        if (loaded) {
+          toast.success("Cloud workspace loaded");
+        } else {
+          // New cloud user: migrate local state to cloud if it exists, or seed
+          const local = await loadState();
+          loaded = local ?? seedState();
+          // Immediately trigger a sync to create the remote record
+          auth.syncToRemote(loaded);
+          toast.info("Started new cloud workspace");
+        }
+      } else {
+        // Guest: Fetch from Local (Secondary)
+        loaded = await loadState();
+        if (!loaded) loaded = seedState();
       }
-      
-      setReady(true);
+
+      if (active) {
+        dispatch({ type: "hydrate", state: loaded });
+        const json = JSON.stringify(loaded);
+        lastSavedRef.current = json;
+        remoteVersionRef.current = json;
+        setReady(true);
+      }
     };
+
     init();
     return () => { active = false; };
-  }, [auth.user]);
+  }, [auth.user, auth.loading]);
 
-  // Real-time subscription
+  // 2. Real-time Cloud Subscription
   useEffect(() => {
     if (!auth.user || !ready) return;
 
     const unsub = subscribeToRemoteChanges(auth.user.id, (newState) => {
       const json = JSON.stringify(newState);
-      // Only hydrate if the remote version is different from what we last saved
+      // Only hydrate if this update actually came from another device/tab
       if (json !== lastSavedRef.current && json !== remoteVersionRef.current) {
         dispatch({ type: "hydrate", state: newState });
         remoteVersionRef.current = json;
+        toast.info("Workspace updated from cloud");
       }
     });
 
     return unsub;
   }, [auth.user, ready]);
 
-  // Persistence logic
+  // 3. Auto-save Persistence
   useEffect(() => {
     if (!ready) return;
     
+    const json = JSON.stringify(state);
+
+    // Local mirror is always maintained for performance/offline
     saveStateDebounced(state);
 
-    if (auth.user) {
-      const json = JSON.stringify(state);
-      if (json !== lastSavedRef.current) {
-        lastSavedRef.current = json;
-        setSyncing(true);
-        
-        const performSync = async () => {
-          try {
-            await auth.syncToRemote(state);
-            setSyncing(false);
-          } catch (err) {
-            setSyncing(false);
-            toast.error("Sync failed. Checking connection...");
-          }
-        };
-        
-        const timer = setTimeout(performSync, 800);
-        return () => clearTimeout(timer);
-      }
+    // Sync to remote if authenticated and state has changed
+    if (auth.user && json !== lastSavedRef.current) {
+      setSyncing(true);
+      
+      const performSync = async () => {
+        try {
+          await auth.syncToRemote(state);
+          lastSavedRef.current = JSON.stringify(state);
+          setSyncing(false);
+        } catch (err) {
+          setSyncing(false);
+          // Only show error toast once every few minutes to avoid spam
+          console.error("Sync failed:", err);
+        }
+      };
+      
+      const timer = setTimeout(performSync, 1000); // 1s debounce for cloud
+      return () => clearTimeout(timer);
     }
   }, [state, auth.user, ready]);
 

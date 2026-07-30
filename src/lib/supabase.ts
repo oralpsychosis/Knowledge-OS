@@ -45,7 +45,7 @@ export function onAuthChange(cb: (user: import("@supabase/supabase-js").User | n
 /*  Document sync                                                      */
 /* ------------------------------------------------------------------ */
 
-// The table should have columns: user_id (uuid, unique), state (jsonb), updated_at (timestamptz)
+// The table uses user_id (uuid, unique), content (jsonb), and updated_at (timestamptz)
 const TABLE = "documents";
 
 export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState | null> {
@@ -53,7 +53,7 @@ export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState
   try {
     const { data, error } = await supabase
       .from(TABLE)
-      .select("state")
+      .select("content")
       .eq("user_id", userId)
       .maybeSingle();
     
@@ -61,7 +61,7 @@ export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState
       console.error("Supabase fetch error:", error);
       return null;
     }
-    if (data?.state) return data.state as KnowledgeOSState;
+    if (data?.content) return data.content as KnowledgeOSState;
     return null;
   } catch (err) {
     console.error("Failed to fetch remote state:", err);
@@ -75,7 +75,7 @@ export async function upsertRemoteState(userId: string, state: KnowledgeOSState)
     const { error } = await supabase.from(TABLE).upsert(
       { 
         user_id: userId, 
-        state, 
+        content: state, 
         updated_at: new Date().toISOString() 
       },
       { onConflict: "user_id" },
@@ -101,8 +101,8 @@ export function subscribeToRemoteChanges(userId: string, onUpdate: (state: Knowl
         filter: `user_id=eq.${userId}`,
       },
       (payload) => {
-        if (payload.new && (payload.new as any).state) {
-          onUpdate((payload.new as any).state as KnowledgeOSState);
+        if (payload.new && (payload.new as any).content) {
+          onUpdate((payload.new as any).content as KnowledgeOSState);
         }
       }
     )

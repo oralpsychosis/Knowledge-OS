@@ -160,7 +160,6 @@ There are currently no application server functions. If sensitive operations are
 
 - Remote fetch errors log and fall back as though no remote document exists.
 - Remote save errors are caught by the store, but the UI receives no durable failure/retry state.
-- The store imports Sonner `toast` but does not use it.
 - Syncing serializes and uploads the complete workspace, including data-URL images.
 - Whiteboard element arrays share the same whole-document sync and last-writer conflict model.
 - There is no data validation when loading local JSON or Supabase `content` beyond shallow shape checks.

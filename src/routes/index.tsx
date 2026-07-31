@@ -5,6 +5,7 @@ import { KnowledgeProvider } from "@/store/knowledge";
 import { Sidebar } from "@/components/os/sidebar";
 import { Canvas } from "@/components/os/canvas";
 import { AmbientBackground } from "@/components/os/ambient-background";
+import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -125,6 +126,7 @@ function Index() {
           <Canvas />
         </div>
       </div>
+      <Toaster position="bottom-right" theme="dark" />
     </KnowledgeProvider>
   );
 }

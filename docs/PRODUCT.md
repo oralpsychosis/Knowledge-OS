@@ -61,6 +61,8 @@ The workspace is saved locally on every state change. A signed-in user also gets
 - Title search with `Ctrl/Cmd + K`.
 - ADHD brain dump, project canvas, and sprint templates.
 - A calm, map-like knowledge graph for exploring page hierarchy in overview or local focus.
+- First-class whiteboard pages for freehand thinking, shapes, arrows, text, frames, and
+  Excalidraw/PNG/SVG exchange without leaving the workspace hierarchy.
 - Layered ambient sound tracks with persistent local preferences.
 - Google sign-in, cloud state sync, and a sync indicator when Supabase is configured.
 
@@ -70,6 +72,7 @@ The workspace is saved locally on every state change. A signed-in user also gets
 - A card-first sticky-note experience.
 - Manual save/publish controls for ordinary editing.
 - Multiple competing editors, state stores, databases, icon sets, or design systems.
+- Images, web embeds, shared libraries, or live multi-user collaboration inside whiteboards.
 - Treating the hierarchy graph as a semantic backlink graph; its links still represent parent-child structure only.
 
 ## Experience acceptance test

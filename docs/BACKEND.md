@@ -25,15 +25,34 @@ This architecture is simple and fast for a single-user workspace, but database s
 ```ts
 type JSONContent = Record<string, unknown>;
 
+type PageKind = "document" | "whiteboard";
+
 interface KnowledgePage {
   id: string;
   title: string;
+  kind?: PageKind;
   icon?: string;
   coverImage?: string;
   avatarImage?: string;
   parentId: string | null;
   childrenIds: string[];
   content: JSONContent;
+  whiteboard?: {
+    version: 1;
+    elements: readonly ExcalidrawElement[];
+    appState: Partial<
+      Pick<
+        AppState,
+        | "gridModeEnabled"
+        | "gridSize"
+        | "gridStep"
+        | "scrollX"
+        | "scrollY"
+        | "viewBackgroundColor"
+        | "zoom"
+      >
+    >;
+  };
   createdAt: number;
   updatedAt: number;
 }
@@ -45,22 +64,29 @@ interface KnowledgeOSState {
 }
 ```
 
-The entire `KnowledgeOSState`, including presentation fields and the active selection, is persisted as one document. There is no schema version or migration function yet.
+The entire `KnowledgeOSState`, including presentation fields and the active selection, is persisted
+as one document. Existing pages can omit `kind` and are treated as documents. Whiteboard scene
+records have their own version marker, but there is still no workspace-level schema version or
+migration function.
+
+Whiteboard persistence intentionally contains no Excalidraw `BinaryFiles`. The image tool, pasted
+images, embeds, and imports containing image/embed elements are blocked so a board cannot silently
+inflate the full workspace JSON with file data.
 
 ## Local persistence
 
 `src/lib/storage.ts` owns local workspace I/O.
 
-| Concern | Current behavior |
-| --- | --- |
-| Database | IndexedDB database `knowledge-os`, object store `state` |
-| Workspace key | `knowledge-os-state` |
-| Primary write | Full state serialized to JSON and stored in IndexedDB |
-| Secondary write | Best-effort mirror of the same JSON in localStorage |
-| Save timing | 400 ms debounce after store changes |
-| Load order | IndexedDB first, then legacy/backup localStorage |
-| Migration | A valid localStorage record is copied into IndexedDB |
-| Images | Uploaded files are stored inline as data URLs |
+| Concern         | Current behavior                                                                              |
+| --------------- | --------------------------------------------------------------------------------------------- |
+| Database        | IndexedDB database `knowledge-os`, object store `state`                                       |
+| Workspace key   | `knowledge-os-state`                                                                          |
+| Primary write   | Full state serialized to JSON and stored in IndexedDB                                         |
+| Secondary write | Best-effort mirror of the same JSON in localStorage                                           |
+| Save timing     | 400 ms debounce after store changes                                                           |
+| Load order      | IndexedDB first, then legacy/backup localStorage                                              |
+| Migration       | A valid localStorage record is copied into IndexedDB                                          |
+| Images          | Document image content and cover/avatar uploads use data URLs; whiteboards reject image files |
 
 IndexedDB operations deliberately fail soft for blocked/private environments. localStorage quota failures also fail soft because IndexedDB remains primary.
 
@@ -83,11 +109,11 @@ Current constraint: when Supabase is not configured, `onAuthChange` returns a no
 
 The client expects a Supabase table named `documents` with:
 
-| Column | Expected contract |
-| --- | --- |
-| `user_id` | UUID and unique conflict target; identifies the authenticated owner |
-| `content` | JSONB containing the complete `KnowledgeOSState` |
-| `updated_at` | Timestamp with time zone |
+| Column       | Expected contract                                                   |
+| ------------ | ------------------------------------------------------------------- |
+| `user_id`    | UUID and unique conflict target; identifies the authenticated owner |
+| `content`    | JSONB containing the complete `KnowledgeOSState`                    |
+| `updated_at` | Timestamp with time zone                                            |
 
 The code performs:
 
@@ -133,6 +159,7 @@ There are currently no application server functions. If sensitive operations are
 - Remote save errors are caught by the store, but the UI receives no durable failure/retry state.
 - The store imports Sonner `toast` but does not use it.
 - Syncing serializes and uploads the complete workspace, including data-URL images.
+- Whiteboard element arrays share the same whole-document sync and last-writer conflict model.
 - There is no data validation when loading local JSON or Supabase `content` beyond shallow shape checks.
 - There is no persisted schema version or migration path.
 - There are no repository-owned backend integration tests.

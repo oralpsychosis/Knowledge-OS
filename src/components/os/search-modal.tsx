@@ -1,10 +1,16 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, FileText } from "lucide-react";
+import { FileText, PenLine, Search } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { useKnowledge } from "@/store/knowledge";
 import type { KnowledgePage } from "@/lib/types";
 
-export function SearchModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function SearchModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   const { state, select } = useKnowledge();
   const [query, setQuery] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +56,12 @@ export function SearchModal({ open, onOpenChange }: { open: boolean; onOpenChang
               className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-[13px] text-white/60 transition-colors hover:bg-white/[0.06] hover:text-white"
             >
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/[0.04] text-[13px]">
-                {p.icon ?? <FileText className="h-3.5 w-3.5 text-white/30" />}
+                {p.icon ??
+                  (p.kind === "whiteboard" ? (
+                    <PenLine className="h-3.5 w-3.5 text-violet-200/60" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5 text-white/30" />
+                  ))}
               </span>
               <span className="flex-1 truncate">{p.title || "Untitled"}</span>
               {state.activePageId === p.id && (

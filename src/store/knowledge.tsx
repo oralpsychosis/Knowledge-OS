@@ -8,7 +8,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { JSONContent, KnowledgeOSState, KnowledgePage } from "@/lib/types";
+import type {
+  JSONContent,
+  KnowledgeOSState,
+  KnowledgePage,
+  PageKind,
+  WhiteboardScene,
+} from "@/lib/types";
 import { loadState, saveStateDebounced } from "@/lib/storage";
 import { addPage, deletePageAndDescendants, seedState } from "@/lib/pages";
 import { useAuth } from "@/lib/auth-context";
@@ -18,12 +24,13 @@ import { toast } from "sonner";
 type Action =
   | { type: "hydrate"; state: KnowledgeOSState }
   | { type: "select"; id: string | null }
-  | { type: "add"; parentId: string | null }
+  | { type: "add"; parentId: string | null; kind: PageKind }
   | { type: "addWithContent"; parentId: string | null; title: string; content: JSONContent }
   | { type: "delete"; id: string }
   | { type: "move"; id: string; direction: "up" | "down" }
   | { type: "patch"; id: string; patch: Partial<KnowledgePage> }
-  | { type: "setContent"; id: string; content: JSONContent };
+  | { type: "setContent"; id: string; content: JSONContent }
+  | { type: "setWhiteboard"; id: string; whiteboard: WhiteboardScene };
 
 const initialState: KnowledgeOSState = { pages: {}, rootOrder: [], activePageId: null };
 
@@ -34,7 +41,7 @@ function reducer(state: KnowledgeOSState, action: Action): KnowledgeOSState {
     case "select":
       return { ...state, activePageId: action.id };
     case "add":
-      return addPage(state, action.parentId);
+      return addPage(state, action.parentId, action.kind);
     case "addWithContent": {
       let s = addPage(state, action.parentId);
       const id = s.activePageId;
@@ -43,7 +50,12 @@ function reducer(state: KnowledgeOSState, action: Action): KnowledgeOSState {
           ...s,
           pages: {
             ...s.pages,
-            [id]: { ...s.pages[id], title: action.title, content: action.content, updatedAt: Date.now() },
+            [id]: {
+              ...s.pages[id],
+              title: action.title,
+              content: action.content,
+              updatedAt: Date.now(),
+            },
           },
         };
       }
@@ -56,7 +68,9 @@ function reducer(state: KnowledgeOSState, action: Action): KnowledgeOSState {
       if (!page) return state;
 
       const parentId = page.parentId;
-      const list = parentId ? [...(state.pages[parentId]?.childrenIds || [])] : [...state.rootOrder];
+      const list = parentId
+        ? [...(state.pages[parentId]?.childrenIds || [])]
+        : [...state.rootOrder];
       const idx = list.indexOf(action.id);
       if (idx === -1) return state;
 
@@ -100,6 +114,21 @@ function reducer(state: KnowledgeOSState, action: Action): KnowledgeOSState {
         },
       };
     }
+    case "setWhiteboard": {
+      const page = state.pages[action.id];
+      if (!page || page.kind !== "whiteboard") return state;
+      return {
+        ...state,
+        pages: {
+          ...state.pages,
+          [action.id]: {
+            ...page,
+            whiteboard: action.whiteboard,
+            updatedAt: Date.now(),
+          },
+        },
+      };
+    }
     default:
       return state;
   }
@@ -111,12 +140,14 @@ interface Ctx {
   syncing: boolean;
   activePage: KnowledgePage | null;
   select: (id: string | null) => void;
-  addPage: (parentId?: string | null) => void;
+  addPage: (parentId?: string | null, kind?: PageKind) => void;
+  addWhiteboard: (parentId?: string | null) => void;
   addPageWithContent: (parentId: string | null, title: string, content: JSONContent) => void;
   deletePage: (id: string) => void;
   movePage: (id: string, direction: "up" | "down") => void;
   patchPage: (id: string, patch: Partial<KnowledgePage>) => void;
   setContent: (id: string, content: JSONContent) => void;
+  setWhiteboard: (id: string, whiteboard: WhiteboardScene) => void;
 }
 
 const KnowledgeContext = createContext<Ctx | null>(null);
@@ -126,7 +157,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const auth = useAuth();
-  
+
   const lastSavedRef = useRef("");
   const remoteVersionRef = useRef("");
 
@@ -160,7 +191,9 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
     };
 
     init();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [auth.user, auth.loading]);
 
   useEffect(() => {
@@ -204,14 +237,17 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
       syncing,
       activePage: state.activePageId ? (state.pages[state.activePageId] ?? null) : null,
       select: (id) => dispatch({ type: "select", id }),
-      addPage: (parentId = null) => dispatch({ type: "add", parentId }),
-      addPageWithContent: (parentId, title, content) => dispatch({ type: "addWithContent", parentId, title, content }),
+      addPage: (parentId = null, kind = "document") => dispatch({ type: "add", parentId, kind }),
+      addWhiteboard: (parentId = null) => dispatch({ type: "add", parentId, kind: "whiteboard" }),
+      addPageWithContent: (parentId, title, content) =>
+        dispatch({ type: "addWithContent", parentId, title, content }),
       deletePage: (id) => dispatch({ type: "delete", id }),
       movePage: (id, direction) => dispatch({ type: "move", id, direction }),
       patchPage: (id, patch) => dispatch({ type: "patch", id, patch }),
       setContent: (id, content) => dispatch({ type: "setContent", id, content }),
+      setWhiteboard: (id, whiteboard) => dispatch({ type: "setWhiteboard", id, whiteboard }),
     }),
-    [state, ready, syncing]
+    [state, ready, syncing],
   );
 
   return <KnowledgeContext.Provider value={value}>{children}</KnowledgeContext.Provider>;

@@ -1,4 +1,10 @@
-import type { JSONContent, KnowledgeOSState, KnowledgePage } from "./types";
+import type {
+  JSONContent,
+  KnowledgeOSState,
+  KnowledgePage,
+  PageKind,
+  WhiteboardScene,
+} from "./types";
 
 export function uid(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -9,21 +15,43 @@ export function emptyDoc(): JSONContent {
   return { type: "doc", content: [{ type: "paragraph" }] };
 }
 
-export function createPage(parentId: string | null = null): KnowledgePage {
+export function emptyWhiteboard(): WhiteboardScene {
+  return {
+    version: 1,
+    elements: [],
+    appState: {
+      gridModeEnabled: false,
+      scrollX: 0,
+      scrollY: 0,
+      viewBackgroundColor: "#f5f5f8",
+    },
+  };
+}
+
+export function createPage(
+  parentId: string | null = null,
+  kind: PageKind = "document",
+): KnowledgePage {
   const now = Date.now();
   return {
     id: uid(),
     title: "",
+    kind,
     parentId,
     childrenIds: [],
     content: emptyDoc(),
+    whiteboard: kind === "whiteboard" ? emptyWhiteboard() : undefined,
     createdAt: now,
     updatedAt: now,
   };
 }
 
-export function addPage(state: KnowledgeOSState, parentId: string | null): KnowledgeOSState {
-  const page = createPage(parentId);
+export function addPage(
+  state: KnowledgeOSState,
+  parentId: string | null,
+  kind: PageKind = "document",
+): KnowledgeOSState {
+  const page = createPage(parentId, kind);
   const pages = { ...state.pages, [page.id]: page };
   let rootOrder = state.rootOrder;
 
@@ -52,10 +80,7 @@ export function collectDescendants(state: KnowledgeOSState, id: string): string[
   return out;
 }
 
-export function deletePageAndDescendants(
-  state: KnowledgeOSState,
-  id: string,
-): KnowledgeOSState {
+export function deletePageAndDescendants(state: KnowledgeOSState, id: string): KnowledgeOSState {
   const doomed = new Set(collectDescendants(state, id));
   const target = state.pages[id];
   const pages: Record<string, KnowledgePage> = {};

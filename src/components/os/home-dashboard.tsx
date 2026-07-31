@@ -1,12 +1,19 @@
 import { useMemo, useState } from "react";
 import { motion } from "motion/react";
-import { Clock, FileText, LayoutGrid, Plus, SortAsc, Zap } from "lucide-react";
+import { Clock, FileText, LayoutGrid, PenLine, Plus, SortAsc, Zap } from "lucide-react";
 import { useKnowledge } from "@/store/knowledge";
 import type { KnowledgePage } from "@/lib/types";
 
 function Thumb({ page }: { page: KnowledgePage }) {
   if (page.coverImage) {
     return <img src={page.coverImage} alt="" className="h-full w-full object-cover" />;
+  }
+  if (page.kind === "whiteboard") {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_center,rgba(139,92,246,0.18),transparent_68%)]">
+        <PenLine className="h-7 w-7 text-violet-200/65" />
+      </div>
+    );
   }
   return (
     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-indigo-500/25 via-violet-500/15 to-transparent">
@@ -17,7 +24,6 @@ function Thumb({ page }: { page: KnowledgePage }) {
       )}
     </div>
   );
-
 }
 
 function timeAgo(ts: number) {
@@ -31,7 +37,7 @@ function timeAgo(ts: number) {
 }
 
 export function HomeDashboard() {
-  const { state, select, addPage } = useKnowledge();
+  const { state, select, addPage, addWhiteboard } = useKnowledge();
   const [sort, setSort] = useState<"updated" | "name">("updated");
 
   const pages = useMemo(() => Object.values(state.pages), [state.pages]);
@@ -64,7 +70,7 @@ export function HomeDashboard() {
         </p>
 
         {/* Quick access */}
-        <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mt-10 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <button
             type="button"
             onClick={() => addPage(null)}
@@ -76,6 +82,19 @@ export function HomeDashboard() {
             <span>
               <span className="block text-[13px] font-medium text-white/90">New page</span>
               <span className="block text-[11px] text-white/35">Capture a thought now</span>
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => addWhiteboard(null)}
+            className="os-glow-hover flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left backdrop-blur-xl"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-violet-400/25 bg-violet-500/15 text-violet-200">
+              <PenLine className="h-4 w-4" />
+            </span>
+            <span>
+              <span className="block text-[13px] font-medium text-white/90">New whiteboard</span>
+              <span className="block text-[11px] text-white/35">Map an idea visually</span>
             </span>
           </button>
           {recents.slice(0, 2).map((p) => (
@@ -173,6 +192,8 @@ export function HomeDashboard() {
                 <img src={p.avatarImage} alt="" className="h-5 w-5 rounded object-cover" />
               ) : p.icon ? (
                 <span className="w-5 text-center text-[13px] leading-none">{p.icon}</span>
+              ) : p.kind === "whiteboard" ? (
+                <PenLine className="h-4 w-4 text-violet-200/55" />
               ) : (
                 <FileText className="h-4 w-4 text-white/25" />
               )}

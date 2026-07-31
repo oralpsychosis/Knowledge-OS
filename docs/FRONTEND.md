@@ -8,6 +8,7 @@
 - Tailwind CSS v4 for styling, shadcn/Radix for reusable primitives, Lucide for UI icons, and Motion for animation.
 - Tiptap 3 with lowlight syntax highlighting for rich-text documents.
 - React Flow provides the interactive graph canvas; Dagre provides deterministic top-to-bottom hierarchy layout.
+- Excalidraw 0.18 provides whiteboard pages and is loaded only after a whiteboard opens.
 
 Path alias `@/*` resolves to `src/*`.
 
@@ -36,7 +37,8 @@ There is currently one product route, `/`. New routes belong in `src/routes`; ne
 
 - `KnowledgeProvider` owns a `useReducer`.
 - `useKnowledge()` exposes state, hydration/sync flags, the active page, and mutation functions.
-- Reducer actions cover hydrate, select, add, template-add, delete, sibling move, page patch, and content update.
+- Reducer actions cover hydrate, select, typed page creation, template-add, delete, sibling move,
+  page patch, document-content update, and whiteboard-scene update.
 - `src/lib/pages.ts` holds pure page creation, deletion, ancestry, counting, and seed helpers.
 - Every mutation creates a new state object, which triggers local persistence and, for authenticated users, debounced remote synchronization.
 
@@ -54,7 +56,12 @@ interface KnowledgeOSState {
 }
 ```
 
-Each page stores `parentId` and an ordered `childrenIds` list. These relationships must remain consistent:
+Each page stores `parentId`, an ordered `childrenIds` list, and an optional `kind`. Missing `kind`
+means a legacy document; newly created pages explicitly use `document` or `whiteboard`. Whiteboard
+pages store a versioned Excalidraw element array plus a compact, serializable viewport/background
+state. They deliberately do not store Excalidraw binary files.
+
+These relationships must remain consistent:
 
 - every root page appears once in `rootOrder` and has `parentId: null`;
 - every child appears once in its parent's `childrenIds` and points back with `parentId`;
@@ -65,17 +72,19 @@ The authoritative full contract is in `src/lib/types.ts`; backend persistence is
 
 ## Main surfaces
 
-| Surface     | Entry point                             | Responsibilities                                                                                                                    |
-| ----------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| App shell   | `src/routes/index.tsx`                  | Sidebar collapse state and top-level product composition                                                                            |
-| Sidebar     | `src/components/os/sidebar.tsx`         | Branding, auth state, create, actions, home, tree, audio, collapse                                                                  |
-| Page tree   | `src/components/os/page-tree.tsx`       | Recursive hierarchy, expand, select, reorder, add child, inline delete confirmation                                                 |
-| Home        | `src/components/os/home-dashboard.tsx`  | Quick create, recents, sorted all-page list                                                                                         |
-| Page canvas | `src/components/os/canvas.tsx`          | Cover, avatar, breadcrumbs, title, editor composition                                                                               |
-| Search      | `src/components/os/search-modal.tsx`    | Case-insensitive title-only search and navigation                                                                                   |
-| Templates   | `src/components/os/templates-modal.tsx` | Creates root pages with predefined Tiptap JSON                                                                                      |
-| Graph       | `src/components/os/graph-modal.tsx`     | Interactive parent-child map with overview/focus modes, pan/zoom controls, contextual edge emphasis, and a selection-only inspector |
-| Focus audio | `src/components/os/focus-audio.tsx`     | Mixes tracks and controls mute/volume                                                                                               |
+| Surface      | Entry point                               | Responsibilities                                                                                                                    |
+| ------------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| App shell    | `src/routes/index.tsx`                    | Sidebar collapse state and top-level product composition                                                                            |
+| Sidebar      | `src/components/os/sidebar.tsx`           | Branding, auth state, create, actions, home, tree, audio, collapse                                                                  |
+| Page tree    | `src/components/os/page-tree.tsx`         | Recursive hierarchy, expand, select, reorder, add child, inline delete confirmation                                                 |
+| Home         | `src/components/os/home-dashboard.tsx`    | Quick create, recents, sorted all-page list                                                                                         |
+| Page canvas  | `src/components/os/canvas.tsx`            | Cover, avatar, breadcrumbs, title, editor composition                                                                               |
+| Whiteboard   | `src/components/os/whiteboard-page.tsx`   | Client-only loading boundary for whiteboard pages                                                                                   |
+| Board editor | `src/components/os/whiteboard-editor.tsx` | Excalidraw shell, debounced scene persistence, import/export, fit controls, and no-image guardrails                                 |
+| Search       | `src/components/os/search-modal.tsx`      | Case-insensitive title-only search and navigation                                                                                   |
+| Templates    | `src/components/os/templates-modal.tsx`   | Creates root pages with predefined Tiptap JSON                                                                                      |
+| Graph        | `src/components/os/graph-modal.tsx`       | Interactive parent-child map with overview/focus modes, pan/zoom controls, contextual edge emphasis, and a selection-only inspector |
+| Focus audio  | `src/components/os/focus-audio.tsx`       | Mixes tracks and controls mute/volume                                                                                               |
 
 Secondary tools may use Radix dialogs. The primary creation/title/editor path must remain inline.
 
@@ -122,6 +131,25 @@ Use the existing obsidian/violet visual language. Motion should clarify state ch
 
 The graph keeps React Flow's third-party control, edge, and minimap overrides under the `.calm-graph` scope. Page order feeds Dagre in stable hierarchy order so reopening or switching modes does not arbitrarily shuffle nodes. Overview renders the full tree; Focus renders the active or selected page's ancestors, nearby siblings, children, and grandchildren. Workspaces larger than 24 pages open in Focus mode to keep the first frame legible, while smaller workspaces open in Overview.
 
+## Whiteboard architecture
+
+`whiteboard-page.tsx` waits for the browser before dynamically importing Excalidraw because the
+package does not support server rendering. This keeps the normal document path free of the
+whiteboard runtime. Excalidraw's fonts are served from `public/excalidraw-assets/fonts`, and
+Knowledge OS-specific overrides are scoped under `.knowledge-whiteboard`. The surrounding shell
+stays dark while the board uses a quiet, high-contrast paper surface and violet default strokes.
+
+`whiteboard-editor.tsx` keeps Excalidraw's live scene inside the editor while a board is open.
+`onChange` derives a signature from the element scene version and the small persisted app-state
+subset. A 650 ms debounce suppresses selection/tool noise before dispatching `setWhiteboard`; the
+existing workspace persistence and optional cloud sync then run normally. Pending scene data is
+flushed when the board unmounts.
+
+The board supports `.excalidraw` import and `.excalidraw`, PNG, and SVG export. The image tool,
+clipboard images, file imports containing image/embed elements, theme switching, and native file
+save/load actions are disabled. Excalidraw global keyboard handling remains disabled so Knowledge
+OS shortcuts only compete while the canvas itself is focused.
+
 ## Keyboard and interaction contracts
 
 - `Ctrl/Cmd + K` toggles search.
@@ -132,6 +160,8 @@ The graph keeps React Flow's third-party control, edge, and minimap overrides un
 - Page deletion requires a second click within three seconds.
 - Graph nodes select on click, open on double-click, and clear their inspector when the canvas or inspector close control is clicked.
 - Graph navigation supports drag-to-pan, wheel/pinch zoom, explicit zoom controls, and fit-to-view.
+- Whiteboards use Excalidraw's local shortcuts only while focused; `Fit`, import, export, and the
+  inline board title remain reachable from the Knowledge OS header.
 
 Preserve keyboard behavior and add accessible labels/tooltips when introducing icon-only controls.
 
@@ -143,5 +173,7 @@ Preserve keyboard behavior and add accessible labels/tooltips when introducing i
 - The graph is optimized for hierarchical exploration, not backlinks or semantic relationships.
 - `ready` exists in the store but the current UI has no dedicated hydration/loading surface.
 - Responsive and mobile behavior have not been captured in automated checks.
+- Excalidraw libraries are not persisted; whiteboard images, embeds, and live collaboration are
+  intentionally unsupported.
 
 When a change resolves one of these constraints, update this section and append one line to `LOG.md`.

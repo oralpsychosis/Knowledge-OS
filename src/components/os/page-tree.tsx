@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ChevronRight, FileText, Plus, Trash2, Check, ChevronUp, ChevronDown } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  FileText,
+  PenLine,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useKnowledge } from "@/store/knowledge";
 
 function Row({ id, depth }: { id: string; depth: number }) {
@@ -15,7 +24,7 @@ function Row({ id, depth }: { id: string; depth: number }) {
 
   // Find position in sibling list
   const parentId = page.parentId;
-  const siblings = parentId ? (state.pages[parentId]?.childrenIds || []) : state.rootOrder;
+  const siblings = parentId ? state.pages[parentId]?.childrenIds || [] : state.rootOrder;
   const idx = siblings.indexOf(id);
   const isFirst = idx === 0;
   const isLast = idx === siblings.length - 1;
@@ -58,6 +67,8 @@ function Row({ id, depth }: { id: string; depth: number }) {
           />
         ) : page.icon ? (
           <span className="w-4 shrink-0 text-center text-[12px] leading-none">{page.icon}</span>
+        ) : page.kind === "whiteboard" ? (
+          <PenLine className="h-3.5 w-3.5 shrink-0 text-violet-200/60" />
         ) : (
           <FileText className="h-3.5 w-3.5 shrink-0 text-white/30" />
         )}
@@ -102,6 +113,11 @@ function Row({ id, depth }: { id: string; depth: number }) {
           <button
             type="button"
             title={confirming ? "Click again to delete" : "Delete"}
+            aria-label={
+              confirming
+                ? `Confirm delete ${page.title || "Untitled"}`
+                : `Delete ${page.title || "Untitled"}`
+            }
             onClick={(e) => {
               e.stopPropagation();
               if (confirming) {

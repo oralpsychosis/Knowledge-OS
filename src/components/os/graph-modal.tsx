@@ -26,7 +26,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "./graph-modal.css";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowUpRight, FileText, Focus, Layers3, Network, X } from "lucide-react";
+import { ArrowUpRight, FileText, Focus, Layers3, Network, PenLine, X } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { countBlocks } from "@/lib/pages";
 import type { KnowledgePage } from "@/lib/types";
@@ -89,8 +89,12 @@ function getPageDepth(pages: Record<string, KnowledgePage>, pageId: string): num
   return depth;
 }
 
-function formatBlockCount(content: KnowledgePage["content"]): string {
-  const count = countBlocks(content);
+function formatPageDetail(page: KnowledgePage): string {
+  if (page.kind === "whiteboard") {
+    const count = page.whiteboard?.elements.length ?? 0;
+    return `${count} ${count === 1 ? "element" : "elements"}`;
+  }
+  const count = countBlocks(page.content);
   return `${count} ${count === 1 ? "block" : "blocks"}`;
 }
 
@@ -190,7 +194,7 @@ function buildLayout(
         active: page.id === activePageId,
         onOpen: onOpenPage,
       },
-      ariaLabel: `${page.title || "Untitled page"}, ${formatBlockCount(page.content)}`,
+      ariaLabel: `${page.title || "Untitled page"}, ${formatPageDetail(page)}`,
     };
   });
 
@@ -222,7 +226,6 @@ function buildLayout(
 function PageNode({ data, selected }: NodeProps<PageGraphNode>) {
   const { page, active } = data;
   const childCount = page.childrenIds.length;
-  const image = page.avatarImage ?? page.icon;
 
   return (
     <div
@@ -253,8 +256,12 @@ function PageNode({ data, selected }: NodeProps<PageGraphNode>) {
           active ? "border-violet-400/30 bg-violet-400/12" : "border-white/[0.08] bg-white/[0.035]",
         )}
       >
-        {image ? (
-          <img src={image} alt="" className="size-full object-cover" draggable={false} />
+        {page.avatarImage ? (
+          <img src={page.avatarImage} alt="" className="size-full object-cover" draggable={false} />
+        ) : page.icon ? (
+          <span className="text-base leading-none">{page.icon}</span>
+        ) : page.kind === "whiteboard" ? (
+          <PenLine className="size-4 text-violet-200/75" />
         ) : (
           <FileText className="size-4 text-violet-200/75" />
         )}
@@ -271,7 +278,7 @@ function PageNode({ data, selected }: NodeProps<PageGraphNode>) {
           {page.title || "Untitled"}
         </p>
         <div className="mt-1 flex items-center gap-2 text-[10px] text-white/35">
-          <span>{formatBlockCount(page.content)}</span>
+          <span>{formatPageDetail(page)}</span>
           {childCount > 0 && (
             <>
               <span className="size-0.5 rounded-full bg-white/25" />
@@ -338,7 +345,6 @@ function GraphWorkspace({ onOpenChange }: Pick<GraphModalProps, "onOpenChange">)
   const [nodes, setNodes, onNodesChange] = useNodesState<PageGraphNode>(layout.nodes);
 
   const selectedPage = selectedId ? state.pages[selectedId] : null;
-  const selectedImage = selectedPage?.avatarImage ?? selectedPage?.icon;
   const selectedPageDepth = selectedPage ? getPageDepth(state.pages, selectedPage.id) : 0;
   const visibleEdgeCount = layout.edges.length;
 
@@ -586,8 +592,12 @@ function GraphWorkspace({ onOpenChange }: Pick<GraphModalProps, "onOpenChange">)
 
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               <div className="flex size-11 items-center justify-center overflow-hidden rounded-xl border border-violet-300/15 bg-violet-400/[0.07]">
-                {selectedImage ? (
-                  <img src={selectedImage} alt="" className="size-full object-cover" />
+                {selectedPage.avatarImage ? (
+                  <img src={selectedPage.avatarImage} alt="" className="size-full object-cover" />
+                ) : selectedPage.icon ? (
+                  <span className="text-lg leading-none">{selectedPage.icon}</span>
+                ) : selectedPage.kind === "whiteboard" ? (
+                  <PenLine className="size-4 text-violet-200/70" />
                 ) : (
                   <FileText className="size-4 text-violet-200/70" />
                 )}
@@ -603,10 +613,12 @@ function GraphWorkspace({ onOpenChange }: Pick<GraphModalProps, "onOpenChange">)
               <div className="mt-5 grid grid-cols-2 gap-2">
                 <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3">
                   <p className="text-lg font-medium text-white/80">
-                    {countBlocks(selectedPage.content)}
+                    {selectedPage.kind === "whiteboard"
+                      ? (selectedPage.whiteboard?.elements.length ?? 0)
+                      : countBlocks(selectedPage.content)}
                   </p>
                   <p className="mt-0.5 text-[10px] uppercase tracking-wider text-white/30">
-                    Blocks
+                    {selectedPage.kind === "whiteboard" ? "Elements" : "Blocks"}
                   </p>
                 </div>
                 <div className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3">

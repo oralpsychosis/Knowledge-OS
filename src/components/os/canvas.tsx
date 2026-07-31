@@ -6,14 +6,33 @@ import { Breadcrumbs } from "./breadcrumbs";
 import { EditableTitle } from "./editable-title";
 import { HomeDashboard } from "./home-dashboard";
 import { BlockEditor } from "../editor/block-editor";
+import { WhiteboardPage } from "./whiteboard-page";
 
 export function Canvas() {
-  const { activePage, patchPage, setContent } = useKnowledge();
+  const { activePage, patchPage, setContent, setWhiteboard, syncing } = useKnowledge();
 
   if (!activePage) {
     return <HomeDashboard />;
   }
 
+  if (activePage.kind === "whiteboard") {
+    return (
+      <motion.div
+        key={activePage.id}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.2 }}
+        className="flex h-full min-w-0 flex-1"
+      >
+        <WhiteboardPage
+          page={activePage}
+          syncing={syncing}
+          onTitleChange={(title) => patchPage(activePage.id, { title })}
+          onSceneChange={(scene) => setWhiteboard(activePage.id, scene)}
+        />
+      </motion.div>
+    );
+  }
 
   return (
     <motion.main

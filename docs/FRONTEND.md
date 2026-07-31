@@ -129,6 +129,10 @@ Component-specific layout and states belong in Tailwind classes. Add global CSS 
 
 Use the existing obsidian/violet visual language. Motion should clarify state changes and hierarchy, and must respect the existing `prefers-reduced-motion` handling for ambient effects.
 
+Looseleaf Terminal is the canonical Knowledge OS identity. Its light transparent mark appears in the
+dark sidebar header, while `src/routes/__root.tsx` publishes the matching SVG, PNG, ICO, and Apple
+touch icon variants from `public/brand`.
+
 The graph keeps React Flow's third-party control, edge, and minimap overrides under the `.calm-graph` scope. Page order feeds Dagre in stable hierarchy order so reopening or switching modes does not arbitrarily shuffle nodes. Overview renders the full tree; Focus renders the active or selected page's ancestors, nearby siblings, children, and grandchildren. Workspaces larger than 24 pages open in Focus mode to keep the first frame legible, while smaller workspaces open in Overview.
 
 ## Whiteboard architecture

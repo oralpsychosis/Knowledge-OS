@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title desc">
+  <title id="title">Knowledge OS icon</title>
+  <desc id="desc">The Looseleaf Terminal logo in a dark app tile.</desc>
+  <rect x="8" y="8" width="240" height="240" rx="54" fill="#08080A" />
+  <path
+    d="M48 38C42 38 38 42 38 48V206C38 213 43 218 50 218H206C213 218 218 213 218 206V74C218 68 214 64 208 63L190 60C185 59 182 56 181 51L179 43C178 40 175 38 171 38H48Z"
+    fill="none"
+    stroke="#F5F5F7"
+    stroke-width="10"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path
+    d="M66 152C54 139 59 113 76 109C93 106 103 124 95 137C88 148 74 144 72 132C69 117 83 103 101 99C124 94 140 115 130 136C120 157 94 162 77 151C66 144 63 132 72 120C82 106 99 111 102 126C105 142 111 154 132 154H169"
+    fill="none"
+    stroke="#F5F5F7"
+    stroke-width="8"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <rect x="180" y="145" width="20" height="20" rx="4" fill="#8B7CF6" />
+</svg>

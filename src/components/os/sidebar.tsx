@@ -4,7 +4,6 @@ import {
   CloudCheck,
   CloudUpload,
   FileText,
-  Hexagon,
   Home,
   LogOut,
   PanelLeftClose,
@@ -37,9 +36,12 @@ export function Sidebar({ collapsed, onToggle }: { collapsed: boolean; onToggle:
       className="relative flex h-full shrink-0 flex-col overflow-hidden border-r border-white/10 bg-black/40 backdrop-blur-xl"
     >
       <div className="flex items-start gap-2.5 px-4 pb-4 pt-5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-gradient-to-br from-indigo-500/40 to-violet-500/30 shadow-[0_0_18px_rgba(139,92,246,0.25)]">
-          <Hexagon className="h-4 w-4 text-violet-200" />
-        </div>
+        <img
+          src="/brand/knowledge-os-logo-on-dark.svg"
+          alt=""
+          aria-hidden="true"
+          className="h-8 w-8 shrink-0 object-contain"
+        />
         {!collapsed && (
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between">

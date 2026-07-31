@@ -53,7 +53,7 @@ The workspace is saved locally on every state change. A signed-in user also gets
 
 - Home dashboard with recent and all-page views.
 - Root pages and arbitrarily nested sub-pages.
-- Up/down ordering among siblings.
+- Whole-row drag and drop for sibling ordering and nesting pages under other pages.
 - Inline title editing and recursive breadcrumbs.
 - Tiptap blocks: paragraphs, headings, bullet and numbered lists, tasks, code, quotes, and dividers.
 - `/` command palette and selection bubble formatting.

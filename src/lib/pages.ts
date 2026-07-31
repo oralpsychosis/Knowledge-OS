@@ -68,6 +68,78 @@ export function addPage(
   return { pages, rootOrder, activePageId: page.id };
 }
 
+/**
+ * Moves a page (and its descendant subtree) to an ordered position under a new parent.
+ * The page map remains flat; only the source/destination order lists and the page's
+ * parent pointer change. `index` is expressed in the destination order after the
+ * source page has been removed.
+ */
+export function movePage(
+  state: KnowledgeOSState,
+  id: string,
+  parentId: string | null,
+  index: number,
+): KnowledgeOSState {
+  const page = state.pages[id];
+  if (!page) return state;
+  if (parentId === id || (parentId && !state.pages[parentId])) return state;
+
+  // A page moves together with its subtree, so a descendant can never become its parent.
+  if (parentId && collectDescendants(state, id).includes(parentId)) return state;
+
+  const previousParentId = page.parentId;
+  const sourceOrder = previousParentId
+    ? state.pages[previousParentId]?.childrenIds
+    : state.rootOrder;
+  if (!sourceOrder) return state;
+
+  const sourceIndex = sourceOrder.indexOf(id);
+  if (sourceIndex === -1) return state;
+
+  const isSameParent = previousParentId === parentId;
+  const destinationOrder = isSameParent
+    ? sourceOrder
+    : parentId
+      ? state.pages[parentId].childrenIds
+      : state.rootOrder;
+  const sourceWithoutPage = sourceOrder.filter((pageId) => pageId !== id);
+  const baseDestination = isSameParent ? sourceWithoutPage : [...destinationOrder];
+
+  const requestedIndex = Number.isFinite(index) ? Math.trunc(index) : baseDestination.length;
+  const destinationIndex = Math.max(0, Math.min(requestedIndex, baseDestination.length));
+
+  if (isSameParent && destinationIndex === sourceIndex) return state;
+
+  const nextDestination = [...baseDestination];
+  nextDestination.splice(destinationIndex, 0, id);
+  const now = Date.now();
+  const pages = { ...state.pages };
+  let rootOrder = state.rootOrder;
+
+  if (previousParentId) {
+    pages[previousParentId] = {
+      ...pages[previousParentId],
+      childrenIds: isSameParent ? nextDestination : sourceWithoutPage,
+      updatedAt: now,
+    };
+  } else {
+    rootOrder = isSameParent ? nextDestination : sourceWithoutPage;
+  }
+
+  if (parentId) {
+    pages[parentId] = {
+      ...pages[parentId],
+      childrenIds: nextDestination,
+      updatedAt: now,
+    };
+  } else {
+    rootOrder = nextDestination;
+  }
+
+  pages[id] = { ...page, parentId };
+  return { ...state, pages, rootOrder };
+}
+
 export function collectDescendants(state: KnowledgeOSState, id: string): string[] {
   const out: string[] = [];
   const walk = (pid: string) => {

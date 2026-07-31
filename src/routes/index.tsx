@@ -5,7 +5,7 @@ import { Sidebar } from "@/components/os/sidebar";
 import { Canvas } from "@/components/os/canvas";
 import { AmbientBackground } from "@/components/os/ambient-background";
 import { SyncTestBadge } from "@/components/os/sync-test-badge";
-
+import { Toaster } from "@/components/ui/sonner";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -40,6 +40,7 @@ function Index() {
         <Canvas />
       </div>
       <SyncTestBadge />
+      <Toaster position="bottom-right" theme="dark" />
     </KnowledgeProvider>
   );
 }

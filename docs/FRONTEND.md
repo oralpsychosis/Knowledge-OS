@@ -37,7 +37,8 @@ There is currently one product route, `/`. New routes belong in `src/routes`; ne
 
 - `KnowledgeProvider` owns a `useReducer`.
 - `useKnowledge()` exposes state, hydration/sync flags, the active page, and mutation functions.
-- Reducer actions cover hydrate, select, typed page creation, template-add, delete, sibling move,
+- Reducer actions cover hydrate, select, typed page creation, template-add, delete, ordered page moves
+  across the full hierarchy,
   page patch, document-content update, and whiteboard-scene update.
 - `src/lib/pages.ts` holds pure page creation, deletion, ancestry, counting, and seed helpers.
 - Every mutation creates a new state object, which triggers local persistence and, for authenticated users, debounced remote synchronization.
@@ -76,7 +77,7 @@ The authoritative full contract is in `src/lib/types.ts`; backend persistence is
 | ------------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | App shell    | `src/routes/index.tsx`                    | Sidebar collapse state and top-level product composition                                                                            |
 | Sidebar      | `src/components/os/sidebar.tsx`           | Branding, auth state, create, actions, home, tree, audio, collapse                                                                  |
-| Page tree    | `src/components/os/page-tree.tsx`         | Recursive hierarchy, expand, select, reorder, add child, inline delete confirmation                                                 |
+| Page tree    | `src/components/os/page-tree.tsx`         | Recursive hierarchy, expand, select, whole-row drag reorder/nesting, add child, inline delete confirmation                          |
 | Home         | `src/components/os/home-dashboard.tsx`    | Quick create, recents, sorted all-page list                                                                                         |
 | Page canvas  | `src/components/os/canvas.tsx`            | Cover, avatar, breadcrumbs, title, editor composition                                                                               |
 | Whiteboard   | `src/components/os/whiteboard-page.tsx`   | Client-only loading boundary for whiteboard pages                                                                                   |
@@ -162,6 +163,10 @@ OS shortcuts only compete while the canvas itself is focused.
 - A newly created empty page auto-focuses its title.
 - Enter is blocked in the single-line auto-growing title.
 - Page deletion requires a second click within three seconds.
+- In the page tree, drag a page row itself to reorder it; use the row center to nest it, row edges to
+  place it beside a sibling, or the temporary top-level zone to remove its parent. Short clicks still
+  open pages, while expand/add/delete controls never begin a drag. Pointer drags use a small movement
+  threshold and touch drags use a short hold to preserve normal scrolling.
 - Graph nodes select on click, open on double-click, and clear their inspector when the canvas or inspector close control is clicked.
 - Graph navigation supports drag-to-pan, wheel/pinch zoom, explicit zoom controls, and fit-to-view.
 - Whiteboards use Excalidraw's local shortcuts only while focused; `Fit`, import, export, and the

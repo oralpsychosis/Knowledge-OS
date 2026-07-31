@@ -16,10 +16,9 @@ import type {
   WhiteboardScene,
 } from "@/lib/types";
 import { loadState, saveStateDebounced } from "@/lib/storage";
-import { addPage, deletePageAndDescendants, seedState } from "@/lib/pages";
+import { addPage, deletePageAndDescendants, movePage, seedState } from "@/lib/pages";
 import { useAuth } from "@/lib/auth-context";
 import { subscribeToRemoteChanges } from "@/lib/supabase";
-import { toast } from "sonner";
 
 type Action =
   | { type: "hydrate"; state: KnowledgeOSState }
@@ -27,7 +26,7 @@ type Action =
   | { type: "add"; parentId: string | null; kind: PageKind }
   | { type: "addWithContent"; parentId: string | null; title: string; content: JSONContent }
   | { type: "delete"; id: string }
-  | { type: "move"; id: string; direction: "up" | "down" }
+  | { type: "move"; id: string; parentId: string | null; index: number }
   | { type: "patch"; id: string; patch: Partial<KnowledgePage> }
   | { type: "setContent"; id: string; content: JSONContent }
   | { type: "setWhiteboard"; id: string; whiteboard: WhiteboardScene };
@@ -63,35 +62,8 @@ function reducer(state: KnowledgeOSState, action: Action): KnowledgeOSState {
     }
     case "delete":
       return deletePageAndDescendants(state, action.id);
-    case "move": {
-      const page = state.pages[action.id];
-      if (!page) return state;
-
-      const parentId = page.parentId;
-      const list = parentId
-        ? [...(state.pages[parentId]?.childrenIds || [])]
-        : [...state.rootOrder];
-      const idx = list.indexOf(action.id);
-      if (idx === -1) return state;
-
-      const newIdx = action.direction === "up" ? idx - 1 : idx + 1;
-      if (newIdx < 0 || newIdx >= list.length) return state;
-
-      // Swap elements
-      [list[idx], list[newIdx]] = [list[newIdx], list[idx]];
-
-      if (parentId) {
-        return {
-          ...state,
-          pages: {
-            ...state.pages,
-            [parentId]: { ...state.pages[parentId], childrenIds: list, updatedAt: Date.now() },
-          },
-        };
-      } else {
-        return { ...state, rootOrder: list };
-      }
-    }
+    case "move":
+      return movePage(state, action.id, action.parentId, action.index);
     case "patch": {
       const page = state.pages[action.id];
       if (!page) return state;
@@ -144,7 +116,7 @@ interface Ctx {
   addWhiteboard: (parentId?: string | null) => void;
   addPageWithContent: (parentId: string | null, title: string, content: JSONContent) => void;
   deletePage: (id: string) => void;
-  movePage: (id: string, direction: "up" | "down") => void;
+  movePage: (id: string, parentId: string | null, index: number) => void;
   patchPage: (id: string, patch: Partial<KnowledgePage>) => void;
   setContent: (id: string, content: JSONContent) => void;
   setWhiteboard: (id: string, whiteboard: WhiteboardScene) => void;
@@ -242,7 +214,7 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
       addPageWithContent: (parentId, title, content) =>
         dispatch({ type: "addWithContent", parentId, title, content }),
       deletePage: (id) => dispatch({ type: "delete", id }),
-      movePage: (id, direction) => dispatch({ type: "move", id, direction }),
+      movePage: (id, parentId, index) => dispatch({ type: "move", id, parentId, index }),
       patchPage: (id, patch) => dispatch({ type: "patch", id, patch }),
       setContent: (id, content) => dispatch({ type: "setContent", id, content }),
       setWhiteboard: (id, whiteboard) => dispatch({ type: "setWhiteboard", id, whiteboard }),

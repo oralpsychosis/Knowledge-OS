@@ -7,6 +7,7 @@
 - React Query is provided at the root, although current workspace reads/writes do not use queries.
 - Tailwind CSS v4 for styling, shadcn/Radix for reusable primitives, Lucide for UI icons, and Motion for animation.
 - Tiptap 3 with lowlight syntax highlighting for rich-text documents.
+- React Flow provides the interactive graph canvas; Dagre provides deterministic top-to-bottom hierarchy layout.
 
 Path alias `@/*` resolves to `src/*`.
 
@@ -64,17 +65,17 @@ The authoritative full contract is in `src/lib/types.ts`; backend persistence is
 
 ## Main surfaces
 
-| Surface | Entry point | Responsibilities |
-| --- | --- | --- |
-| App shell | `src/routes/index.tsx` | Sidebar collapse state and top-level product composition |
-| Sidebar | `src/components/os/sidebar.tsx` | Branding, auth state, create, actions, home, tree, audio, collapse |
-| Page tree | `src/components/os/page-tree.tsx` | Recursive hierarchy, expand, select, reorder, add child, inline delete confirmation |
-| Home | `src/components/os/home-dashboard.tsx` | Quick create, recents, sorted all-page list |
-| Page canvas | `src/components/os/canvas.tsx` | Cover, avatar, breadcrumbs, title, editor composition |
-| Search | `src/components/os/search-modal.tsx` | Case-insensitive title-only search and navigation |
-| Templates | `src/components/os/templates-modal.tsx` | Creates root pages with predefined Tiptap JSON |
-| Graph | `src/components/os/graph-modal.tsx` | Visualizes parent-child hierarchy and basic document metadata |
-| Focus audio | `src/components/os/focus-audio.tsx` | Mixes tracks and controls mute/volume |
+| Surface     | Entry point                             | Responsibilities                                                                                                                    |
+| ----------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| App shell   | `src/routes/index.tsx`                  | Sidebar collapse state and top-level product composition                                                                            |
+| Sidebar     | `src/components/os/sidebar.tsx`         | Branding, auth state, create, actions, home, tree, audio, collapse                                                                  |
+| Page tree   | `src/components/os/page-tree.tsx`       | Recursive hierarchy, expand, select, reorder, add child, inline delete confirmation                                                 |
+| Home        | `src/components/os/home-dashboard.tsx`  | Quick create, recents, sorted all-page list                                                                                         |
+| Page canvas | `src/components/os/canvas.tsx`          | Cover, avatar, breadcrumbs, title, editor composition                                                                               |
+| Search      | `src/components/os/search-modal.tsx`    | Case-insensitive title-only search and navigation                                                                                   |
+| Templates   | `src/components/os/templates-modal.tsx` | Creates root pages with predefined Tiptap JSON                                                                                      |
+| Graph       | `src/components/os/graph-modal.tsx`     | Interactive parent-child map with overview/focus modes, pan/zoom controls, contextual edge emphasis, and a selection-only inspector |
+| Focus audio | `src/components/os/focus-audio.tsx`     | Mixes tracks and controls mute/volume                                                                                               |
 
 Secondary tools may use Radix dialogs. The primary creation/title/editor path must remain inline.
 
@@ -119,6 +120,8 @@ Component-specific layout and states belong in Tailwind classes. Add global CSS 
 
 Use the existing obsidian/violet visual language. Motion should clarify state changes and hierarchy, and must respect the existing `prefers-reduced-motion` handling for ambient effects.
 
+The graph keeps React Flow's third-party control, edge, and minimap overrides under the `.calm-graph` scope. Page order feeds Dagre in stable hierarchy order so reopening or switching modes does not arbitrarily shuffle nodes. Overview renders the full tree; Focus renders the active or selected page's ancestors, nearby siblings, children, and grandchildren. Workspaces larger than 24 pages open in Focus mode to keep the first frame legible, while smaller workspaces open in Overview.
+
 ## Keyboard and interaction contracts
 
 - `Ctrl/Cmd + K` toggles search.
@@ -127,6 +130,8 @@ Use the existing obsidian/violet visual language. Motion should clarify state ch
 - A newly created empty page auto-focuses its title.
 - Enter is blocked in the single-line auto-growing title.
 - Page deletion requires a second click within three seconds.
+- Graph nodes select on click, open on double-click, and clear their inspector when the canvas or inspector close control is clicked.
+- Graph navigation supports drag-to-pan, wheel/pinch zoom, explicit zoom controls, and fit-to-view.
 
 Preserve keyboard behavior and add accessible labels/tooltips when introducing icon-only controls.
 
@@ -135,7 +140,7 @@ Preserve keyboard behavior and add accessible labels/tooltips when introducing i
 - There is no automated test suite.
 - `SyncTestBadge` is always rendered and is visibly a development artifact.
 - Search inspects titles only, not Tiptap document text.
-- The graph shows hierarchy, not links or semantic relationships.
+- The graph is optimized for hierarchical exploration, not backlinks or semantic relationships.
 - `ready` exists in the store but the current UI has no dedicated hydration/loading surface.
 - Responsive and mobile behavior have not been captured in automated checks.
 

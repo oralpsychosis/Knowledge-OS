@@ -59,11 +59,14 @@ The workspace is saved locally on every state change. A signed-in user also gets
 - `/` command palette and selection bubble formatting.
 - Uploadable cover/avatar images plus a curated remote cover gallery.
 - Title search with `Ctrl/Cmd + K`.
+- Responsive workspace navigation: a calm page sidebar on desktop, a compact focus rail when
+  collapsed, and a dismissible drawer on small screens.
 - ADHD brain dump, project canvas, and sprint templates.
 - A calm, map-like knowledge graph for exploring page hierarchy in overview or local focus.
 - First-class whiteboard pages for freehand thinking, shapes, arrows, text, frames, and
   Excalidraw/PNG/SVG exchange without leaving the workspace hierarchy.
-- Layered ambient sound tracks with persistent local preferences.
+- A compact soundscape transport with an inline, scroll-contained mixer, per-layer volume, and
+  persistent local mix preferences.
 - Google sign-in, cloud state sync, and a sync indicator when Supabase is configured.
 
 ## Deliberate non-goals unless explicitly approved

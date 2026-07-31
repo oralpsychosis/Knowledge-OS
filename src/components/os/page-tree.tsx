@@ -5,14 +5,22 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  Ellipsis,
   FileText,
   PenLine,
   Plus,
   Trash2,
 } from "lucide-react";
 import { useKnowledge } from "@/store/knowledge";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
-function Row({ id, depth }: { id: string; depth: number }) {
+function Row({ id, depth, onNavigate }: { id: string; depth: number; onNavigate?: () => void }) {
   const { state, select, addPage, deletePage, movePage } = useKnowledge();
   const page = state.pages[id];
   const [expanded, setExpanded] = useState(true);
@@ -29,23 +37,41 @@ function Row({ id, depth }: { id: string; depth: number }) {
   const isFirst = idx === 0;
   const isLast = idx === siblings.length - 1;
 
+  function requestDelete() {
+    if (confirming) {
+      deletePage(id);
+      onNavigate?.();
+      return;
+    }
+
+    setConfirming(true);
+    setTimeout(() => setConfirming(false), 3000);
+  }
+
   return (
     <div>
       <motion.div
         layout
-        onClick={() => select(id)}
-        whileHover={{ scale: 1.01 }}
-        whileTap={{ scale: 0.985 }}
+        onClick={() => {
+          select(id);
+          onNavigate?.();
+        }}
         transition={{ type: "spring", stiffness: 400, damping: 30 }}
-        className={`group relative flex h-8 cursor-pointer items-center gap-1 rounded-lg border pr-1 text-[13px] os-glow-hover ${
+        className={`group relative flex h-8 cursor-pointer items-center gap-1 rounded-lg pr-1 text-[13px] transition-colors ${
           active
-            ? "os-glow-active border-white/10 bg-violet-500/12 text-white"
-            : "border-transparent text-white/60 hover:bg-white/5 hover:text-white/90"
+            ? "bg-white/[0.065] text-white/92"
+            : "text-white/52 hover:bg-white/[0.04] hover:text-white/82"
         }`}
         style={{ paddingLeft: 6 + depth * 14 }}
       >
+        {active && (
+          <span className="absolute left-0 top-2 h-4 w-0.5 rounded-full bg-violet-300/80" />
+        )}
         <button
           type="button"
+          aria-label={
+            expanded ? `Collapse ${page.title || "Untitled"}` : `Expand ${page.title || "Untitled"}`
+          }
           onClick={(e) => {
             e.stopPropagation();
             setExpanded((v) => !v);
@@ -75,10 +101,68 @@ function Row({ id, depth }: { id: string; depth: number }) {
 
         <span className="min-w-0 flex-1 truncate">{page.title || "Untitled"}</span>
 
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Page actions for ${page.title || "Untitled"}`}
+              onClick={(event) => event.stopPropagation()}
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-white/40 hover:bg-white/[0.07] hover:text-white/80 md:hidden"
+            >
+              <Ellipsis className="size-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            sideOffset={5}
+            collisionPadding={12}
+            className="z-[80] w-48 border-white/10 bg-[#15151b] p-1.5 text-white/70 shadow-2xl md:hidden"
+          >
+            <DropdownMenuItem
+              disabled={isFirst}
+              onSelect={() => movePage(id, "up")}
+              className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
+            >
+              <ChevronUp />
+              Move up
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={isLast}
+              onSelect={() => movePage(id, "down")}
+              className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
+            >
+              <ChevronDown />
+              Move down
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                setExpanded(true);
+                addPage(id);
+                onNavigate?.();
+              }}
+              className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
+            >
+              <Plus />
+              Add sub-page
+            </DropdownMenuItem>
+            <DropdownMenuSeparator className="bg-white/[0.07]" />
+            <DropdownMenuItem
+              onSelect={requestDelete}
+              className={`rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] ${
+                confirming ? "text-red-300 focus:text-red-200" : "focus:text-white"
+              }`}
+            >
+              {confirming ? <Check /> : <Trash2 />}
+              {confirming ? "Confirm delete" : "Delete"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <div className="hidden shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 md:flex">
           <button
             type="button"
             disabled={isFirst}
+            aria-label={`Move ${page.title || "Untitled"} up`}
             onClick={(e) => {
               e.stopPropagation();
               movePage(id, "up");
@@ -90,6 +174,7 @@ function Row({ id, depth }: { id: string; depth: number }) {
           <button
             type="button"
             disabled={isLast}
+            aria-label={`Move ${page.title || "Untitled"} down`}
             onClick={(e) => {
               e.stopPropagation();
               movePage(id, "down");
@@ -101,6 +186,7 @@ function Row({ id, depth }: { id: string; depth: number }) {
           <button
             type="button"
             title="Add sub-page"
+            aria-label={`Add sub-page to ${page.title || "Untitled"}`}
             onClick={(e) => {
               e.stopPropagation();
               setExpanded(true);
@@ -120,12 +206,7 @@ function Row({ id, depth }: { id: string; depth: number }) {
             }
             onClick={(e) => {
               e.stopPropagation();
-              if (confirming) {
-                deletePage(id);
-                return;
-              }
-              setConfirming(true);
-              setTimeout(() => setConfirming(false), 3000);
+              requestDelete();
             }}
             className={`flex h-6 w-6 items-center justify-center rounded-md transition-colors ${
               confirming
@@ -149,7 +230,7 @@ function Row({ id, depth }: { id: string; depth: number }) {
             className="overflow-hidden"
           >
             {page.childrenIds.map((cid) => (
-              <Row key={cid} id={cid} depth={depth + 1} />
+              <Row key={cid} id={cid} depth={depth + 1} onNavigate={onNavigate} />
             ))}
           </motion.div>
         )}
@@ -158,7 +239,7 @@ function Row({ id, depth }: { id: string; depth: number }) {
   );
 }
 
-export function PageTree() {
+export function PageTree({ onNavigate }: { onNavigate?: () => void }) {
   const { state } = useKnowledge();
   if (!state.rootOrder.length) {
     return (
@@ -170,7 +251,7 @@ export function PageTree() {
   return (
     <motion.div layout className="space-y-0.5">
       {state.rootOrder.map((id) => (
-        <Row key={id} id={id} depth={0} />
+        <Row key={id} id={id} depth={0} onNavigate={onNavigate} />
       ))}
     </motion.div>
   );

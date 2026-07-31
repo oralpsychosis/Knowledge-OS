@@ -90,7 +90,10 @@ inflate the full workspace JSON with file data.
 
 IndexedDB operations deliberately fail soft for blocked/private environments. localStorage quota failures also fail soft because IndexedDB remains primary.
 
-Focus-audio preferences are a separate local-only record under `focus-audio-prefs`; they are not part of the workspace and do not sync to Supabase.
+Soundscape preferences are a separate versioned, local-only record under `focus-audio-prefs`. Version
+2 stores `masterVolume` plus validated layers shaped as `{ id, volume }`; the loader migrates the
+legacy track-ID/global-volume record. Playback state is deliberately ephemeral, never autostarts on
+load, is not part of the workspace, and does not sync to Supabase.
 
 ## Authentication
 

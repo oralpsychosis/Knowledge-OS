@@ -278,3 +278,9 @@
   border-color: rgb(167 139 250 / 0.5);
   box-shadow: 0 0 22px rgb(139 92 246 / 0.28), inset 0 0 18px rgb(99 102 241 / 0.1);
 }
+
+@media (max-width: 767px) {
+  .knowledge-sidebar[data-mobile-open="false"] {
+    transform: translateX(calc(-100% - 12px)) !important;
+  }
+}

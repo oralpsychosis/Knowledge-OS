@@ -681,16 +681,28 @@ function GraphWorkspace({ onOpenChange }: Pick<GraphModalProps, "onOpenChange">)
 }
 
 export function GraphModal({ open, onOpenChange }: GraphModalProps) {
+  const mapTitleRef = useRef<HTMLHeadingElement>(null);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-[88vh] w-[min(96vw,1280px)] max-w-none flex-col gap-0 overflow-hidden border-white/[0.1] bg-[#0e0e15] p-0 shadow-[0_32px_100px_rgba(0,0,0,0.62)] [&>button]:right-5 [&>button]:top-5 [&>button]:z-30 [&>button]:rounded-lg [&>button]:text-white/45">
+      <DialogContent
+        className="flex h-[88vh] w-[min(96vw,1280px)] max-w-none flex-col gap-0 overflow-hidden border-white/[0.1] bg-[#0e0e15] p-0 shadow-[0_32px_100px_rgba(0,0,0,0.62)] [&>button]:right-4 [&>button]:top-4 [&>button]:z-30 [&>button]:flex [&>button]:size-8 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-lg [&>button]:bg-transparent [&>button]:text-white/40 [&>button]:opacity-100 [&>button]:ring-offset-0 [&>button]:transition-colors [&>button:hover]:bg-white/[0.055] [&>button:hover]:text-white/80 [&>button:focus]:ring-0 [&>button:focus]:ring-offset-0 [&>button:focus-visible]:ring-1 [&>button:focus-visible]:ring-violet-300/45 [&>button:focus-visible]:ring-offset-0 [&>button[data-state=open]]:bg-transparent [&>button[data-state=open]]:text-white/40"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          mapTitleRef.current?.focus();
+        }}
+      >
         <header className="flex h-[64px] shrink-0 items-center border-b border-white/[0.07] px-5 pr-14">
           <div className="flex size-9 items-center justify-center rounded-xl border border-violet-300/15 bg-violet-400/[0.07]">
             <Network className="size-4 text-violet-200/75" />
           </div>
           <div className="ml-3">
-            <DialogTitle className="text-sm font-medium tracking-tight text-white/90">
-              Knowledge graph
+            <DialogTitle
+              ref={mapTitleRef}
+              tabIndex={-1}
+              className="text-sm font-medium tracking-tight text-white/90 outline-none"
+            >
+              Workspace map
             </DialogTitle>
             <DialogDescription className="mt-0.5 text-[11px] text-white/35">
               Explore the structure of your workspace

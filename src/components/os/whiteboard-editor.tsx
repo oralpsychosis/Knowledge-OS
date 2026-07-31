@@ -314,7 +314,7 @@ export default function WhiteboardEditor({
 
   return (
     <main className="knowledge-whiteboard flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#0e0e14]">
-      <header className="relative z-20 flex min-h-[66px] shrink-0 items-center gap-3 border-b border-white/[0.08] bg-black/45 px-4 backdrop-blur-xl md:px-5">
+      <header className="relative z-20 flex min-h-[66px] shrink-0 items-center gap-3 border-b border-white/[0.08] bg-black/45 pl-16 pr-4 backdrop-blur-xl md:px-5">
         <div className="min-w-0 flex-1">
           <Breadcrumbs pageId={page.id} />
           <div className="mt-1.5 flex min-w-0 items-center gap-2.5">

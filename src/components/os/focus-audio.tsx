@@ -1,177 +1,321 @@
-import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "motion/react";
-import { Headphones, Play, Pause } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Headphones,
+  Pause,
+  Play,
+  Plus,
+  SlidersHorizontal,
+  Volume2,
+  X,
+} from "lucide-react";
 import { Slider } from "@/components/ui/slider";
-import { getAvailableTracks, playTracks, stopAll, setVolume, muteAll, loadPrefs, savePrefs } from "@/lib/audio-engine";
+import {
+  createAudioLayer,
+  getAvailableTracks,
+  loadPrefs,
+  pauseAll,
+  playTracks,
+  savePrefs,
+  setMixVolumes,
+} from "@/lib/audio-engine";
 import type { AudioPrefs, TrackInfo } from "@/lib/audio-engine";
 
 const tracks = getAvailableTracks();
+const emptyPrefs: AudioPrefs = { version: 2, layers: [], masterVolume: 0.5 };
+type PlaybackState = "paused" | "starting" | "playing";
 
-export function FocusAudio() {
+export function FocusAudio({ collapsed = false }: { collapsed?: boolean }) {
+  const [prefs, setPrefs] = useState<AudioPrefs>(emptyPrefs);
   const [open, setOpen] = useState(false);
-  const [prefs, setPrefs] = useState<AudioPrefs>(() => {
-    try { return loadPrefs(); } catch { return { activeTrackIds: [], volume: 0.5, muted: false }; }
-  });
-  const [activeIds, setActiveIds] = useState<string[]>(prefs.activeTrackIds);
-  const [volume, setVolumeState] = useState(prefs.muted ? 0 : prefs.volume);
-  const [muted, setMuted] = useState(prefs.muted);
-  const initialized = useRef(false);
-  const prevVolume = useRef(prefs.volume);
+  const [showLibrary, setShowLibrary] = useState(false);
+  const [playbackState, setPlaybackState] = useState<PlaybackState>("paused");
+  const playbackRequest = useRef(0);
+  const playbackIntent = useRef(false);
+
+  const activeTracks = useMemo(
+    () =>
+      prefs.layers
+        .map((layer) => tracks.find((track) => track.id === layer.id))
+        .filter((track): track is TrackInfo => track !== undefined),
+    [prefs.layers],
+  );
+  const availableTracks = useMemo(
+    () => tracks.filter((track) => !prefs.layers.some((layer) => layer.id === track.id)),
+    [prefs.layers],
+  );
+  const hasMix = prefs.layers.length > 0;
+  const mixLabel = getMixLabel(activeTracks);
+  const playbackActive = playbackState !== "paused";
 
   useEffect(() => {
-    try {
-      if (initialized.current) return;
-      initialized.current = true;
-      if (prefs.activeTrackIds.length > 0 && !prefs.muted) {
-        playTracks(prefs.activeTrackIds, prefs.volume);
-      }
-    } catch { /* init */ }
+    const stored = loadPrefs();
+    setPrefs(stored);
+
+    return () => {
+      playbackIntent.current = false;
+      playbackRequest.current += 1;
+      pauseAll();
+    };
   }, []);
 
-  function toggleTrack(id: string) {
-    try {
-      const next = activeIds.includes(id)
-        ? activeIds.filter((a) => a !== id)
-        : [...activeIds, id];
-      setActiveIds(next);
-      updatePrefs({ activeTrackIds: next });
-      if (next.length === 0) {
-        stopAll();
-      } else {
-        playTracks(next, muted ? 0 : volume);
-      }
-    } catch { /* toggle */ }
+  function persist(next: AudioPrefs): void {
+    setPrefs(next);
+    savePrefs(next);
   }
 
-  function toggleMute() {
-    try {
-      const nextMuted = !muted;
-      setMuted(nextMuted);
-      updatePrefs({ muted: nextMuted });
-      if (nextMuted) {
-        muteAll();
-      } else {
-        setVolume(prevVolume.current);
-        setVolumeState(prevVolume.current);
-        if (activeIds.length > 0) {
-          playTracks(activeIds, prevVolume.current);
-        }
-      }
-    } catch { /* mute */ }
+  async function startMix(nextPrefs = prefs): Promise<void> {
+    if (nextPrefs.layers.length === 0) return;
+    playbackIntent.current = true;
+    setPlaybackState("starting");
+    const requestId = ++playbackRequest.current;
+    const started = await playTracks(nextPrefs.layers, nextPrefs.masterVolume);
+    if (playbackRequest.current !== requestId) return;
+    if (!playbackIntent.current) {
+      pauseAll();
+      return;
+    }
+
+    playbackIntent.current = started;
+    setPlaybackState(started ? "playing" : "paused");
   }
 
-  function onVolumeChange(v: number[]) {
-    try {
-      const val = v[0];
-      setVolumeState(val);
-      prevVolume.current = val;
-      if (muted) {
-        setMuted(false);
-        updatePrefs({ muted: false, volume: val });
-      } else {
-        updatePrefs({ volume: val });
-      }
-      setVolume(val);
-      if (activeIds.length > 0 && muted) {
-        playTracks(activeIds, val);
-      }
-    } catch { /* volume */ }
+  function pauseMix(): void {
+    playbackIntent.current = false;
+    playbackRequest.current += 1;
+    pauseAll();
+    setPlaybackState("paused");
   }
 
-  function updatePrefs(partial: Partial<AudioPrefs>) {
-    try {
-      const next = { ...prefs, ...partial };
-      setPrefs(next);
-      savePrefs(next);
-    } catch { /* prefs */ }
+  function togglePlayback(): void {
+    if (playbackIntent.current) {
+      pauseMix();
+      return;
+    }
+
+    if (!hasMix) {
+      setOpen(true);
+      setShowLibrary(true);
+      return;
+    }
+
+    void startMix();
   }
 
-  const hasActive = activeIds.length > 0;
+  function toggleMixer(): void {
+    const nextOpen = !open;
+    setOpen(nextOpen);
+    if (nextOpen && !hasMix) setShowLibrary(true);
+  }
 
-  return (
-    <div className="relative">
+  function addTrack(id: string): void {
+    const next: AudioPrefs = {
+      ...prefs,
+      layers: [...prefs.layers, createAudioLayer(id)],
+    };
+    persist(next);
+    if (playbackIntent.current) void startMix(next);
+    if (next.layers.length === tracks.length) setShowLibrary(false);
+  }
+
+  function removeTrack(id: string): void {
+    const next: AudioPrefs = {
+      ...prefs,
+      layers: prefs.layers.filter((layer) => layer.id !== id),
+    };
+    persist(next);
+
+    if (next.layers.length === 0) {
+      pauseMix();
+      setShowLibrary(true);
+    } else if (playbackIntent.current) {
+      void startMix(next);
+    }
+  }
+
+  function updateMasterVolume(values: number[]): void {
+    const masterVolume = values[0] ?? prefs.masterVolume;
+    const next = { ...prefs, masterVolume };
+    persist(next);
+    setMixVolumes(next.layers, next.masterVolume);
+  }
+
+  function updateLayerVolume(id: string, values: number[]): void {
+    const volume = values[0];
+    if (volume === undefined) return;
+
+    const next = {
+      ...prefs,
+      layers: prefs.layers.map((layer) => (layer.id === id ? { ...layer, volume } : layer)),
+    };
+    persist(next);
+    setMixVolumes(next.layers, next.masterVolume);
+  }
+
+  if (collapsed) {
+    if (!hasMix) return null;
+
+    return (
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-[13px] transition-colors ${
-          open || hasActive
-            ? "text-violet-200 bg-white/[0.06]"
-            : "text-white/40 hover:bg-white/5 hover:text-white/80"
-        }`}
+        onClick={togglePlayback}
+        title={playbackActive ? `Pause ${mixLabel}` : `Resume ${mixLabel}`}
+        aria-label={playbackActive ? `Pause ${mixLabel}` : `Resume ${mixLabel}`}
+        className="flex h-10 w-full items-center justify-center rounded-lg text-white/45 transition-colors hover:bg-white/[0.05] hover:text-white/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
       >
-        <span className="relative">
-          <Headphones className={`h-4 w-4 ${hasActive && !muted ? "text-violet-300" : ""}`} />
-          {hasActive && !muted && (
-            <motion.span
-              animate={{ scale: [1, 1.3, 1], opacity: [0.4, 0.8, 0.4] }}
-              transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute inset-0 block h-full w-full rounded-full bg-violet-400/30 blur-sm"
-            />
-          )}
-        </span>
-        <span className="flex-1 text-left">Focus Audio</span>
-        {hasActive && !muted && (
-          <motion.span
-            animate={{ scale: [1, 1.15, 1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            className="h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]"
-          />
-        )}
+        {playbackActive ? <Pause className="size-4" /> : <Play className="size-4" />}
       </button>
+    );
+  }
 
-      <AnimatePresence>
+  return (
+    <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#0d0d12]">
+      <div className="flex h-10 items-center gap-2 px-2">
+        <button
+          type="button"
+          onClick={toggleMixer}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+        >
+          <Headphones
+            className={`size-4 shrink-0 ${playbackActive ? "text-violet-300" : "text-white/40"}`}
+          />
+          <span className="min-w-0 flex-1 leading-none">
+            <span className="block text-[12px] font-medium text-white/75">Soundscape</span>
+            <span className="mt-1 block truncate text-[10px] text-white/35">
+              {hasMix
+                ? `${mixLabel} · ${
+                    playbackState === "starting"
+                      ? "Starting"
+                      : playbackState === "playing"
+                        ? "Playing"
+                        : "Paused"
+                  }`
+                : "Off"}
+            </span>
+          </span>
+        </button>
+
+        {hasMix && (
+          <button
+            type="button"
+            onClick={togglePlayback}
+            title={playbackActive ? "Pause soundscape" : "Play soundscape"}
+            aria-label={playbackActive ? "Pause soundscape" : "Play soundscape"}
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-white/55 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+          >
+            {playbackActive ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={toggleMixer}
+          title={open ? "Close soundscape mixer" : "Open soundscape mixer"}
+          aria-label={open ? "Close soundscape mixer" : "Open soundscape mixer"}
+          aria-expanded={open}
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/[0.06] hover:text-white/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+        >
+          <SlidersHorizontal className="size-3.5" />
+        </button>
+      </div>
+
+      <AnimatePresence initial={false}>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 30 }}
-            className="absolute bottom-full left-2 mb-2 w-[280px] origin-bottom-left overflow-hidden rounded-2xl border border-white/10 bg-black/70 backdrop-blur-2xl shadow-2xl shadow-black/60"
+            className="overflow-hidden border-t border-white/[0.07]"
           >
-            <div className="px-4 pb-3 pt-4">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-[11px] uppercase tracking-[0.15em] text-white/40">
-                  Soundscape
-                </span>
-                <button
-                  type="button"
-                  onClick={toggleMute}
-                  className={`flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
-                    muted
-                      ? "border-white/10 bg-white/[0.02] text-white/30"
-                      : "border-violet-400/40 bg-violet-500/10 text-violet-200"
-                  }`}
-                  title={muted ? "Unmute" : "Mute"}
-                >
-                  {muted ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-1.5">
-                {tracks.map((t) => (
-                  <TrackCard
-                    key={t.id}
-                    track={t}
-                    active={activeIds.includes(t.id)}
-                    muted={muted}
-                    onClick={() => toggleTrack(t.id)}
+            <div className="flex max-h-[min(200px,32dvh)] flex-col bg-[#111116] md:max-h-[min(260px,42vh)] [@media(max-height:520px)]:max-h-[min(170px,34dvh)]">
+              {hasMix && (
+                <div className="flex shrink-0 items-center gap-2 border-b border-white/[0.06] px-3 py-2.5">
+                  <Volume2 className="size-3.5 shrink-0 text-white/35" />
+                  <span className="w-10 text-[10px] font-medium text-white/45">Master</span>
+                  <MixSlider
+                    value={prefs.masterVolume}
+                    label={`Master volume ${Math.round(prefs.masterVolume * 100)}%`}
+                    onChange={updateMasterVolume}
                   />
-                ))}
-              </div>
+                  <span className="w-7 text-right text-[10px] tabular-nums text-white/30">
+                    {Math.round(prefs.masterVolume * 100)}
+                  </span>
+                </div>
+              )}
 
-              <div className="mt-3 flex items-center gap-3">
-                <span className="text-[10px] uppercase tracking-wider text-white/30">Vol</span>
-                <Slider
-                  value={muted ? [0] : [volume]}
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  onValueChange={onVolumeChange}
-                  className="flex-1 [&_[role=slider]]:h-3 [&_[role=slider]]:w-3 [&_[role=slider]]:border-violet-400/50 [&_[role=slider]]:bg-violet-500/30 [&_.range]:bg-gradient-to-r [&_.range]:from-violet-500 [&_.range]:to-fuchsia-500 [&_.track]:bg-white/10"
-                />
-                <span className="w-8 text-right text-[11px] text-white/40">
-                  {Math.round((muted ? 0 : volume) * 100)}%
-                </span>
+              <div className="os-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
+                {hasMix && (
+                  <div className="space-y-1">
+                    <p className="px-1 pb-1 text-[9px] font-medium uppercase tracking-[0.16em] text-white/25">
+                      Your mix
+                    </p>
+                    {prefs.layers.map((layer) => {
+                      const track = activeTracks.find((candidate) => candidate.id === layer.id);
+                      if (!track) return null;
+
+                      return (
+                        <ActiveTrackRow
+                          key={track.id}
+                          track={track}
+                          volume={layer.volume}
+                          onVolumeChange={(values) => updateLayerVolume(track.id, values)}
+                          onRemove={() => removeTrack(track.id)}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {availableTracks.length > 0 && (
+                  <div className={hasMix ? "mt-2 border-t border-white/[0.06] pt-2" : ""}>
+                    <button
+                      type="button"
+                      onClick={() => setShowLibrary((visible) => !visible)}
+                      aria-expanded={showLibrary}
+                      className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-[11px] font-medium text-white/55 transition-colors hover:bg-white/[0.04] hover:text-white/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+                    >
+                      <Plus className="size-3.5" />
+                      <span className="flex-1 text-left">Add sound</span>
+                      {showLibrary ? (
+                        <ChevronUp className="size-3.5" />
+                      ) : (
+                        <ChevronDown className="size-3.5" />
+                      )}
+                    </button>
+
+                    <AnimatePresence initial={false}>
+                      {showLibrary && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                          className="overflow-hidden"
+                        >
+                          <div className="grid grid-cols-2 gap-1 pt-1">
+                            {availableTracks.map((track) => (
+                              <button
+                                key={track.id}
+                                type="button"
+                                onClick={() => addTrack(track.id)}
+                                className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-[11px] text-white/45 transition-colors hover:bg-white/[0.05] hover:text-white/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+                              >
+                                <span aria-hidden="true" className="text-[15px]">
+                                  {track.icon}
+                                </span>
+                                <span className="truncate">{track.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -181,31 +325,66 @@ export function FocusAudio() {
   );
 }
 
-function TrackCard({
-  track,
-  active,
-  muted,
-  onClick,
+function getMixLabel(activeTracks: TrackInfo[]): string {
+  if (activeTracks.length === 0) return "Soundscape";
+  if (activeTracks.length === 1) return activeTracks[0].label;
+  if (activeTracks.length === 2) return `${activeTracks[0].label} + ${activeTracks[1].label}`;
+  return `${activeTracks.length}-sound mix`;
+}
+
+function MixSlider({
+  value,
+  label,
+  onChange,
 }: {
-  track: TrackInfo;
-  active: boolean;
-  muted: boolean;
-  onClick: () => void;
+  value: number;
+  label: string;
+  onChange: (values: number[]) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-[12px] transition-all ${
-        active && !muted
-          ? "border-violet-400/40 bg-violet-500/10 text-violet-100 shadow-[0_0_16px_rgba(139,92,246,0.15)]"
-          : active && muted
-            ? "border-white/10 bg-white/[0.03] text-white/40"
-            : "border-white/5 bg-white/[0.02] text-white/40 hover:border-white/10 hover:text-white/70"
-      }`}
-    >
-      <span className="text-xl">{track.icon}</span>
-      <span className="text-center leading-tight">{track.label}</span>
-    </button>
+    <Slider
+      value={[value]}
+      min={0}
+      max={1}
+      step={0.01}
+      onValueChange={onChange}
+      aria-label={label}
+      className="flex-1 [&_[role=slider]]:size-3 [&_[role=slider]]:border-white/25 [&_[role=slider]]:bg-[#25252d] [&_.range]:bg-violet-400/65 [&_.track]:h-1 [&_.track]:bg-white/10"
+    />
+  );
+}
+
+function ActiveTrackRow({
+  track,
+  volume,
+  onVolumeChange,
+  onRemove,
+}: {
+  track: TrackInfo;
+  volume: number;
+  onVolumeChange: (values: number[]) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex h-9 items-center gap-2 rounded-lg px-2 text-white/65 hover:bg-white/[0.025]">
+      <span aria-hidden="true" className="w-5 shrink-0 text-center text-[15px]">
+        {track.icon}
+      </span>
+      <span className="w-20 truncate text-[11px]">{track.label}</span>
+      <MixSlider
+        value={volume}
+        label={`${track.label} volume ${Math.round(volume * 100)}%`}
+        onChange={onVolumeChange}
+      />
+      <button
+        type="button"
+        onClick={onRemove}
+        title={`Remove ${track.label}`}
+        aria-label={`Remove ${track.label}`}
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-white/25 transition-colors hover:bg-white/[0.05] hover:text-white/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-white/20"
+      >
+        <X className="size-3" />
+      </button>
+    </div>
   );
 }

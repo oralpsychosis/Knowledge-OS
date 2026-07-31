@@ -1,24 +1,27 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 const SHORTCUTS = [
-  { keys: "⌘K", label: "Quick Search" },
-  { keys: "⌘N", label: "New Page" },
-  { keys: "⌘S", label: "Save / Sync" },
-  { keys: "⌘Z", label: "Undo" },
-  { keys: "⌘⇧Z", label: "Redo" },
-  { keys: "⌘B", label: "Bold" },
-  { keys: "⌘I", label: "Italic" },
-  { keys: "⌘⇧K", label: "Toggle Sidebar" },
-  { keys: "Esc", label: "Close Modals" },
-  { keys: "/", label: "Slash Commands" },
+  { keys: "Ctrl / ⌘ K", label: "Quick search" },
+  { keys: "/", label: "Open block menu" },
+  { keys: "Ctrl / ⌘ B", label: "Bold" },
+  { keys: "Ctrl / ⌘ I", label: "Italic" },
+  { keys: "Ctrl / ⌘ Z", label: "Undo" },
+  { keys: "Ctrl / ⌘ ⇧ Z", label: "Redo" },
+  { keys: "Esc", label: "Close dialogs" },
 ];
 
-export function KeysModal({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+export function KeysModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm border-white/10 bg-black/90 backdrop-blur-2xl shadow-2xl">
-        <h2 className="text-[15px] font-semibold text-white/90">Keyboard Shortcuts</h2>
-        <p className="mb-3 mt-1 text-[12px] text-white/40">Power-up your workflow</p>
+      <DialogContent className="max-w-sm border-white/10 bg-[#111116] shadow-2xl">
+        <h2 className="text-[15px] font-semibold text-white/90">Keyboard shortcuts</h2>
+        <p className="mb-3 mt-1 text-[12px] text-white/40">Move quickly without leaving the page</p>
         <div className="flex flex-col gap-1">
           {SHORTCUTS.map((s) => (
             <div

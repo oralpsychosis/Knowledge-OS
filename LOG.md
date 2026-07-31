@@ -1,0 +1,1 @@
+- 2026-07-31T04:02:41+01:00 | docs | Established canonical agent, product, frontend, backend, workflow, and one-line change-log documentation from the current codebase | validation: source-reference check, Markdown-link check, log-format check, full diff review, and git diff --check

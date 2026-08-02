@@ -31,3 +31,4 @@
 - 2026-08-03T11:45:12+00:00 | graph | Implemented the final approved GraphView design with coordinate persistence and arced schematic connectors. | validation: verified position saving across page refreshes and visual fidelity of the schematic layout.
 - 2026-08-03T12:12:30+00:00 | graph | Updated graph cards to display page avatar images and icons in the glyph slot. | validation: manual check of card rendering with and without uploaded avatars.
 - 2026-08-03T13:45:12+00:00 | frontend | Integrated a curated emoji picker into the page avatar area for fast Notion-style page labeling. | validation: verified icon/avatar toggle logic and modal rendering.
+- 2026-08-03T14:12:45+00:00 | frontend | Upgraded the icon picker to a full EmojiPicker library with Apple-style emojis and integrated search. | validation: verified library rendering and search functionality.

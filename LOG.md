@@ -21,3 +21,4 @@
 - 2026-08-02T16:10:00+00:00 | whiteboard | Fully re-enabled Excalidraw Whiteboard Editor with client-side lazy loading, completing the restoration of core workspace tools | validation: manual verification of whiteboard loading and interaction
 - 2026-08-02T16:45:00+00:00 | deployment | Strictly disabled Excalidraw in the UI to prevent deployment crashes while restoring the focused Calm-Focus-Graph system | validation: manual verification of graph mode switching and hidden whiteboard entry points
 - 2026-08-02T17:10:00+00:00 | graph | Fixed blank graph rendering and replaced default white nodes with custom dark-themed Knowledge OS nodes | validation: manual verification of graph layout and selection styling
+- 2026-08-02T17:45:00+00:00 | graph | Updated graph layout to fit all pages in overview mode with dark styled nodes and direct click navigation | validation: manual verification of graph node rendering and node navigation

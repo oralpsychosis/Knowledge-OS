@@ -14,3 +14,4 @@
 - 2026-08-02T11:02:18+00:00 | frontend | Implemented a strict client-side mounting guard in the index route to completely bypass SSR for heavy product logic and providers | validation: manual verification of preview load stability
 - 2026-08-02T11:35:12+00:00 | ssr | Refactored the error capture utility to remove server-side side effects and improve stability on Vercel/Netlify | validation: code review of module-level execution and browser listener safety
 - 2026-08-02T12:12:45+00:00 | ssr | Implemented aggressive isolation for Supabase and error-capture utilities to eliminate all build-time server crashes in production environments | validation: module-import safety verification and architectural review
+- 2026-08-02T13:45:00+00:00 | tooling | Hardened Supabase, Auth, and Storage initialization for SSR resilience and added Netlify SPA routing support | validation: code review of initialization safety guards and public asset check

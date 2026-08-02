@@ -1,19 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { 
-  Check, 
   Circle, 
-  CloudUpload, 
   Eraser, 
-  LineChart as LineIcon, 
-  LoaderCircle, 
   Minus, 
   PenLine, 
-  RotateCcw, 
   Square, 
   Type, 
   Trash2,
   Undo2,
-  Redo2
+  Redo2,
+  PaintBucket
 } from "lucide-react";
 import { Breadcrumbs } from "./breadcrumbs";
 import type { KnowledgePage, WhiteboardScene, WhiteboardElement, WhiteboardPoint } from "@/lib/types";
@@ -39,6 +35,10 @@ function drawElement(ctx: CanvasRenderingContext2D, el: WhiteboardElement) {
   ctx.strokeStyle = el.color;
   ctx.fillStyle = el.color;
 
+  // Professional shadow/glow for all elements
+  ctx.shadowBlur = 4;
+  ctx.shadowColor = "rgba(0,0,0,0.4)";
+
   if (el.type === "stroke") {
     if (!el.points || el.points.length === 0) return;
     ctx.globalCompositeOperation = el.tool === "eraser" ? "destination-out" : "source-over";
@@ -50,12 +50,22 @@ function drawElement(ctx: CanvasRenderingContext2D, el: WhiteboardElement) {
     }
     ctx.stroke();
   } else if (el.type === "rectangle") {
+    if (el.fill) {
+      ctx.globalAlpha = 0.15;
+      ctx.fillRect(el.x, el.y, el.width || 0, el.height || 0);
+      ctx.globalAlpha = 1.0;
+    }
     ctx.strokeRect(el.x, el.y, el.width || 0, el.height || 0);
   } else if (el.type === "circle") {
     ctx.beginPath();
     const rx = (el.width || 0) / 2;
     const ry = (el.height || 0) / 2;
     ctx.ellipse(el.x + rx, el.y + ry, Math.abs(rx), Math.abs(ry), 0, 0, Math.PI * 2);
+    if (el.fill) {
+      ctx.globalAlpha = 0.15;
+      ctx.fill();
+      ctx.globalAlpha = 1.0;
+    }
     ctx.stroke();
   } else if (el.type === "line") {
     if (!el.points || el.points.length < 2) return;
@@ -64,7 +74,9 @@ function drawElement(ctx: CanvasRenderingContext2D, el: WhiteboardElement) {
     ctx.lineTo(el.points[1].x, el.points[1].y);
     ctx.stroke();
   } else if (el.type === "text" && el.text) {
-    ctx.font = `500 ${el.size * 8}px Inter, system-ui, sans-serif`;
+    ctx.shadowBlur = 0; // Disable shadow for text for clarity
+    ctx.font = `600 20px "Inter", system-ui, sans-serif`;
+    ctx.textBaseline = "top";
     ctx.fillText(el.text, el.x, el.y);
   }
   ctx.restore();
@@ -81,6 +93,7 @@ export default function WhiteboardEditor({ page, syncing, onTitleChange, onScene
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const textInputRef = useRef<HTMLInputElement>(null);
   
   const [elements, setElements] = useState<WhiteboardElement[]>(page.whiteboard?.elements || []);
   const [history, setHistory] = useState<WhiteboardElement[][]>([page.whiteboard?.elements || []]);
@@ -88,6 +101,7 @@ export default function WhiteboardEditor({ page, syncing, onTitleChange, onScene
   
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState(COLORS[0]);
+  const [fill, setFill] = useState(true);
   const [activeElement, setActiveElement] = useState<WhiteboardElement | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [textPos, setTextPos] = useState({ x: 0, y: 0 });
@@ -169,6 +183,7 @@ export default function WhiteboardEditor({ page, syncing, onTitleChange, onScene
     if (tool === "text") {
       setTextPos(start);
       setIsTyping(true);
+      setTimeout(() => textInputRef.current?.focus(), 10);
       return;
     }
 
@@ -177,9 +192,10 @@ export default function WhiteboardEditor({ page, syncing, onTitleChange, onScene
       type: tool === "pen" || tool === "eraser" ? "stroke" : tool,
       x: start.x,
       y: start.y,
-      color: tool === "eraser" ? "#000000" : color,
+      color: tool === "eraser" ? "#08080a" : color,
       size: tool === "eraser" ? ERASER_SIZE : PEN_SIZE,
       points: [start],
+      fill: tool === "rectangle" || tool === "circle" ? fill : false,
       tool: tool === "eraser" ? "eraser" : "pen",
     };
     setActiveElement(newEl);
@@ -238,8 +254,8 @@ export default function WhiteboardEditor({ page, syncing, onTitleChange, onScene
           />
         </div>
         <div className="flex items-center gap-1 border-l border-white/10 pl-3">
-          <button onClick={undo} disabled={historyIndex === 0} className="p-2 text-white/40 hover:text-white disabled:opacity-20 transition"><Undo2 size={16} /></button>
-          <button onClick={redo} disabled={historyIndex === history.length - 1} className="p-2 text-white/40 hover:text-white disabled:opacity-20 transition"><Redo2 size={16} /></button>
+          <button onClick={undo} disabled={historyIndex === 0} title="Undo (Ctrl+Z)" className="p-2 text-white/40 hover:text-white disabled:opacity-20 transition"><Undo2 size={16} /></button>
+          <button onClick={redo} disabled={historyIndex === history.length - 1} title="Redo (Ctrl+Y)" className="p-2 text-white/40 hover:text-white disabled:opacity-20 transition"><Redo2 size={16} /></button>
         </div>
       </header>
 
@@ -251,12 +267,22 @@ export default function WhiteboardEditor({ page, syncing, onTitleChange, onScene
         <ToolBtn active={tool === "circle"} onClick={() => setTool("circle")} icon={<Circle size={15} />} />
         <ToolBtn active={tool === "line"} onClick={() => setTool("line")} icon={<Minus size={15} />} />
         <ToolBtn active={tool === "text"} onClick={() => setTool("text")} icon={<Type size={15} />} />
+        
         <div className="mx-1 h-5 w-px bg-white/10" />
         <div className="flex items-center gap-1.5">
           {COLORS.map(c => (
             <button key={c} onClick={() => setColor(c)} className={`size-6 rounded-full border-2 transition ${color === c ? "border-white scale-110 shadow-lg" : "border-transparent opacity-50 hover:opacity-100"}`} style={{ backgroundColor: c }} />
           ))}
         </div>
+        
+        <button 
+          onClick={() => setFill(!fill)} 
+          className={`ml-1 flex size-9 items-center justify-center rounded-lg transition ${fill ? "bg-violet-500/20 text-violet-100" : "text-white/30 hover:text-white"}`}
+          title="Toggle Fill"
+        >
+          <PaintBucket size={15} />
+        </button>
+
         <div className="flex-1" />
         <button onClick={() => { pushToHistory([]); }} className="flex items-center gap-1.5 rounded-lg bg-red-500/10 px-3 py-1.5 text-[11px] font-medium text-red-200 hover:bg-red-500/20 transition"><Trash2 size={14} /> Clear</button>
       </div>
@@ -271,11 +297,12 @@ export default function WhiteboardEditor({ page, syncing, onTitleChange, onScene
           className="absolute inset-0 block touch-none"
         />
         {isTyping && (
-          <div className="absolute z-50" style={{ left: textPos.x, top: textPos.y - 12 }}>
+          <div className="absolute z-50 px-2 py-1 bg-white/5 rounded border border-white/10 backdrop-blur-md" style={{ left: textPos.x, top: textPos.y }}>
             <input
+              ref={textInputRef}
               autoFocus
-              className="border-none bg-transparent font-medium text-white outline-none"
-              style={{ color, fontSize: `${PEN_SIZE * 8}px` }}
+              className="min-w-[120px] border-none bg-transparent font-semibold text-white outline-none"
+              style={{ color, fontSize: `18px` }}
               onBlur={(e) => handleTextSubmit(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleTextSubmit((e.target as HTMLInputElement).value)}
             />

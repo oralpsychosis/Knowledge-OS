@@ -16,11 +16,12 @@ export interface WhiteboardElement {
   y: number;
   width?: number;
   height?: number;
-  points?: WhiteboardPoint[]; // For freehand strokes and lines
+  points?: WhiteboardPoint[];
   text?: string;
   color: string;
   size: number;
-  tool?: "pen" | "eraser"; // Legacy support for strokes
+  fill?: boolean; // New: optional background fill
+  tool?: "pen" | "eraser";
 }
 
 export interface WhiteboardAppState {
@@ -28,7 +29,7 @@ export interface WhiteboardAppState {
 }
 
 export interface WhiteboardScene {
-  version: 2; // Incremented version for new element types
+  version: 2;
   elements: readonly WhiteboardElement[];
   appState?: WhiteboardAppState;
 }

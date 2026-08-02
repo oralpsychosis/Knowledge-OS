@@ -1,9 +1,6 @@
-import { lazy, Suspense } from "react";
+import { useEffect, useState } from "react";
 import { LoaderCircle, PenLine } from "lucide-react";
 import type { KnowledgePage, WhiteboardScene } from "@/lib/types";
-import { ClientOnly } from "./client-only";
-
-const WhiteboardEditor = lazy(() => import("./whiteboard-editor"));
 
 interface WhiteboardPageProps {
   page: KnowledgePage;
@@ -26,17 +23,25 @@ function Fallback() {
   );
 }
 
-export function WhiteboardPage({ page, syncing, onTitleChange, onSceneChange }: WhiteboardPageProps) {
-  return (
-    <ClientOnly fallback={<Fallback />}>
-      <Suspense fallback={<Fallback />}>
-        <WhiteboardEditor
-          page={page}
-          syncing={syncing}
-          onTitleChange={onTitleChange}
-          onSceneChange={onSceneChange}
-        />
-      </Suspense>
-    </ClientOnly>
-  );
+export function WhiteboardPage(props: WhiteboardPageProps) {
+  const [EditorComponent, setEditorComponent] = useState<React.ComponentType<WhiteboardPageProps> | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    // Strictly load the browser-only Excalidraw module inside useEffect (client-side only)
+    import("./whiteboard-editor").then((module) => {
+      if (mounted) {
+        setEditorComponent(() => module.default);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  if (!EditorComponent) {
+    return <Fallback />;
+  }
+
+  return <EditorComponent {...props} />;
 }

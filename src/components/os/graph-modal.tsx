@@ -1,13 +1,14 @@
-import { lazy, Suspense } from "react";
-import { LoaderCircle, Waypoints } from "lucide-react";
+import { useEffect, useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { ClientOnly } from "./client-only";
-
-const GraphCanvas = lazy(() => import("./graph-canvas"));
 
 interface GraphModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+interface GraphCanvasProps {
+  onClose: () => void;
 }
 
 function Fallback() {
@@ -20,15 +21,31 @@ function Fallback() {
 }
 
 export function GraphModal({ open, onOpenChange }: GraphModalProps) {
+  const [CanvasComponent, setCanvasComponent] = useState<React.ComponentType<GraphCanvasProps> | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let mounted = true;
+    // Strictly load the browser-only React Flow + Dagre module inside useEffect (client-side only)
+    import("./graph-canvas").then((module) => {
+      if (mounted) {
+        setCanvasComponent(() => module.default);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [open]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl border-white/10 bg-[#0a0a0f] p-2 text-white shadow-2xl">
         <DialogTitle className="sr-only">Workspace Map</DialogTitle>
-        <ClientOnly fallback={<Fallback />}>
-          <Suspense fallback={<Fallback />}>
-            <GraphCanvas onClose={() => onOpenChange(false)} />
-          </Suspense>
-        </ClientOnly>
+        {CanvasComponent ? (
+          <CanvasComponent onClose={() => onOpenChange(false)} />
+        ) : (
+          <Fallback />
+        )}
       </DialogContent>
     </Dialog>
   );

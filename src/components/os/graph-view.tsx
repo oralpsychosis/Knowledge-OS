@@ -10,7 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { Maximize2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Maximize2, ZoomIn, ZoomOut, FileText } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Public types                                                       */
@@ -39,7 +39,6 @@ export interface GraphViewProps {
   selectedId?: string | null;
   className?: string;
   title?: ReactNode | null;
-  onClose?: () => void;
   showHints?: boolean;
 }
 
@@ -73,7 +72,6 @@ export default function GraphView({
   selectedId = null,
   className = "",
   title = "Workspace Map",
-  onClose,
   showHints = true,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -268,16 +266,6 @@ export default function GraphView({
               {title}
             </span>
           </div>
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex size-7 items-center justify-center rounded-lg text-white/30 transition-all hover:bg-white/[0.07] hover:text-white"
-              aria-label="Close"
-            >
-              <X size={14} />
-            </button>
-          )}
         </div>
       )}
 

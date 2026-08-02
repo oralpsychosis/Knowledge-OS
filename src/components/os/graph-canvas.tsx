@@ -38,7 +38,6 @@ export default function GraphCanvas({ onClose }: { onClose: () => void }) {
         edges={edges}
         selectedId={state.activePageId}
         onNodeOpen={handleNavigate}
-        onClose={onClose}
         title="Workspace Graph"
       />
     </div>

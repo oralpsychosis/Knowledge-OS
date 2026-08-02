@@ -4,23 +4,22 @@ import type { KnowledgeOSState } from "./types";
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
+const isServer = typeof window === "undefined";
+
 const canInitialize = Boolean(
   url && 
   key && 
-  typeof url === "string" && 
+  !isServer && // Aggressively disable on server
   url.startsWith("http") &&
   !url.includes("YOUR_SUPABASE_URL")
 );
 
-// Critical fix: prevent Supabase from attempting to access localStorage on the server
-const isServer = typeof window === "undefined";
-
 export const supabase = canInitialize 
   ? createClient(url!, key!, {
       auth: {
-        persistSession: !isServer, // Only persist on client
-        autoRefreshToken: !isServer,
-        detectSessionInUrl: !isServer,
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
       }
     }) 
   : null;
@@ -30,23 +29,14 @@ export const supabase = canInitialize
 /* ------------------------------------------------------------------ */
 
 export async function signInWithGoogle() {
-  if (!supabase || isServer) return;
-  
-  try {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin,
-        queryParams: {
-          prompt: 'select_account',
-          access_type: 'offline',
-        },
-      },
-    });
-    if (error) throw error;
-  } catch (err) {
-    console.error("Sign in failed:", err);
-  }
+  if (!supabase) return;
+  await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+      queryParams: { prompt: 'select_account', access_type: 'offline' },
+    },
+  });
 }
 
 export async function signOut() {
@@ -55,29 +45,22 @@ export async function signOut() {
 }
 
 /**
- * Monitors authentication state. If Supabase is not configured or fails,
- * it immediately signals a null user so the app can finish hydrating.
+ * Monitors authentication state. Immediately signals a null user on the server
+ * so that the hydration process can complete without waiting for a database response.
  */
-export function onAuthChange(cb: (user: import("@supabase/supabase-js").User | null) => void) {
-  if (!supabase) {
+export function onAuthChange(cb: (user: any | null) => void) {
+  if (!supabase || isServer) {
     cb(null);
     return () => {};
   }
   
-  // Setup listener
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
     cb(session?.user ?? null);
   });
   
-  // Check current session immediately (async but safe)
-  supabase.auth.getSession()
-    .then(({ data: { session } }) => {
-      cb(session?.user ?? null);
-    })
-    .catch((err) => {
-      console.warn("Supabase session check failed:", err.message);
-      cb(null);
-    });
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    cb(session?.user ?? null);
+  }).catch(() => cb(null));
   
   return () => data?.subscription.unsubscribe();
 }
@@ -89,7 +72,7 @@ export function onAuthChange(cb: (user: import("@supabase/supabase-js").User | n
 const TABLE = "documents";
 
 export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState | null> {
-  if (!supabase) return null;
+  if (!supabase || isServer) return null;
   try {
     const { data, error } = await supabase
       .from(TABLE)
@@ -97,29 +80,20 @@ export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState
       .eq("user_id", userId)
       .maybeSingle();
     
-    if (error) {
-      console.warn("Remote state fetch note:", error.message);
-      return null;
-    }
+    if (error) return null;
     return (data?.content as KnowledgeOSState) || null;
-  } catch (err) {
-    console.error("Failed to fetch remote state:", err);
+  } catch {
     return null;
   }
 }
 
 export async function upsertRemoteState(userId: string, state: KnowledgeOSState) {
-  if (!supabase) return;
+  if (!supabase || isServer) return;
   try {
-    const { error } = await supabase.from(TABLE).upsert(
-      { 
-        user_id: userId, 
-        content: state, 
-        updated_at: new Date().toISOString() 
-      },
+    await supabase.from(TABLE).upsert(
+      { user_id: userId, content: state, updated_at: new Date().toISOString() },
       { onConflict: "user_id" },
     );
-    if (error) throw error;
   } catch (err) {
     console.error("Remote sync failed:", err);
   }
@@ -128,29 +102,15 @@ export async function upsertRemoteState(userId: string, state: KnowledgeOSState)
 export function subscribeToRemoteChanges(userId: string, onUpdate: (state: KnowledgeOSState) => void) {
   if (!supabase || isServer) return () => {};
   
-  try {
-    const channel = supabase
-      .channel(`sync:${userId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: TABLE,
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          const next = (payload.new as any)?.content;
-          if (next) onUpdate(next as KnowledgeOSState);
-        }
-      )
-      .subscribe();
+  const channel = supabase
+    .channel(`sync:${userId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: TABLE, filter: `user_id=eq.${userId}` }, 
+      (payload) => {
+        const next = (payload.new as any)?.content;
+        if (next) onUpdate(next as KnowledgeOSState);
+      }
+    )
+    .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  } catch (err) {
-    console.error("Subscription failed:", err);
-    return () => {};
-  }
+  return () => { supabase.removeChannel(channel); };
 }

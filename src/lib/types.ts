@@ -7,13 +7,20 @@ export interface WhiteboardPoint {
   y: number;
 }
 
-export interface WhiteboardStroke {
+export type WhiteboardElementType = "stroke" | "rectangle" | "circle" | "line" | "text";
+
+export interface WhiteboardElement {
   id: string;
-  type: "stroke";
-  tool: "pen" | "eraser";
+  type: WhiteboardElementType;
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  points?: WhiteboardPoint[]; // For freehand strokes and lines
+  text?: string;
   color: string;
   size: number;
-  points: WhiteboardPoint[];
+  tool?: "pen" | "eraser"; // Legacy support for strokes
 }
 
 export interface WhiteboardAppState {
@@ -21,8 +28,8 @@ export interface WhiteboardAppState {
 }
 
 export interface WhiteboardScene {
-  version: 1;
-  elements: readonly WhiteboardStroke[];
+  version: 2; // Incremented version for new element types
+  elements: readonly WhiteboardElement[];
   appState?: WhiteboardAppState;
 }
 

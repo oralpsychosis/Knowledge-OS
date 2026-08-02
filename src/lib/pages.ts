@@ -6,8 +6,19 @@ import type {
   WhiteboardScene,
 } from "./types";
 
+/**
+ * Generates a unique ID. Handles SSR where crypto.randomUUID might not be
+ * available depending on the Node.js version.
+ */
 export function uid(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  if (typeof crypto !== "undefined") {
+    if ("randomUUID" in crypto) return (crypto as any).randomUUID();
+    if ("getRandomValues" in crypto) {
+      return ([1e7] as any + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, (c: any) =>
+        (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)
+      );
+    }
+  }
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
@@ -68,12 +79,6 @@ export function addPage(
   return { pages, rootOrder, activePageId: page.id };
 }
 
-/**
- * Moves a page (and its descendant subtree) to an ordered position under a new parent.
- * The page map remains flat; only the source/destination order lists and the page's
- * parent pointer change. `index` is expressed in the destination order after the
- * source page has been removed.
- */
 export function movePage(
   state: KnowledgeOSState,
   id: string,
@@ -84,7 +89,6 @@ export function movePage(
   if (!page) return state;
   if (parentId === id || (parentId && !state.pages[parentId])) return state;
 
-  // A page moves together with its subtree, so a descendant can never become its parent.
   if (parentId && collectDescendants(state, id).includes(parentId)) return state;
 
   const previousParentId = page.parentId;
@@ -212,62 +216,6 @@ export function seedState(): KnowledgeOSState {
           {
             type: "text",
             text: " anywhere on this canvas to summon blocks — headings, lists, to-dos, code, quotes. Select text for the floating format bar.",
-          },
-        ],
-      },
-      {
-        type: "taskList",
-        content: [
-          {
-            type: "taskItem",
-            attrs: { checked: true },
-            content: [{ type: "paragraph", content: [{ type: "text", text: "Open the engine" }] }],
-          },
-          {
-            type: "taskItem",
-            attrs: { checked: false },
-            content: [
-              {
-                type: "paragraph",
-                content: [{ type: "text", text: "Drop a cover image from your machine" }],
-              },
-            ],
-          },
-          {
-            type: "taskItem",
-            attrs: { checked: false },
-            content: [
-              { type: "paragraph", content: [{ type: "text", text: "Write the thought down" }] },
-            ],
-          },
-        ],
-      },
-      {
-        type: "heading",
-        attrs: { level: 3 },
-        content: [{ type: "text", text: "Everything is local" }],
-      },
-      {
-        type: "codeBlock",
-        attrs: { language: "typescript" },
-        content: [
-          {
-            type: "text",
-            text: 'const state = load("knowledge-os-state");\n// pages, rootOrder, activePageId — persisted on every keystroke.',
-          },
-        ],
-      },
-      {
-        type: "blockquote",
-        content: [
-          {
-            type: "paragraph",
-            content: [
-              {
-                type: "text",
-                text: "Zero friction between having a thought and capturing it.",
-              },
-            ],
           },
         ],
       },

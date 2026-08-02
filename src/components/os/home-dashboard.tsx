@@ -37,7 +37,7 @@ function timeAgo(ts: number) {
 }
 
 export function HomeDashboard() {
-  const { state, select, addPage, addWhiteboard } = useKnowledge();
+  const { state, select, addPage } = useKnowledge();
   const [sort, setSort] = useState<"updated" | "name">("updated");
 
   const pages = useMemo(() => Object.values(state.pages), [state.pages]);
@@ -84,20 +84,8 @@ export function HomeDashboard() {
               <span className="block text-[11px] text-white/35">Capture a thought now</span>
             </span>
           </button>
-          <button
-            type="button"
-            onClick={() => addWhiteboard(null)}
-            className="os-glow-hover flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left backdrop-blur-xl"
-          >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-violet-400/25 bg-violet-500/15 text-violet-200">
-              <PenLine className="h-4 w-4" />
-            </span>
-            <span>
-              <span className="block text-[13px] font-medium text-white/90">New whiteboard</span>
-              <span className="block text-[11px] text-white/35">Map an idea visually</span>
-            </span>
-          </button>
-          {recents.slice(0, 2).map((p) => (
+          
+          {recents.slice(0, 3).map((p) => (
             <button
               key={p.id}
               type="button"

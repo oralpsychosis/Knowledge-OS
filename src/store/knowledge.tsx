@@ -138,27 +138,34 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
 
     let active = true;
     const init = async () => {
-      setReady(false);
-      let loaded: KnowledgeOSState | null = null;
+      try {
+        let loaded: KnowledgeOSState | null = null;
 
-      if (auth.user) {
-        loaded = await auth.fetchRemote();
-        if (!loaded) {
-          const local = await loadState();
-          loaded = local ?? seedState();
-          await auth.syncToRemote(loaded);
+        if (auth.user) {
+          loaded = await auth.fetchRemote();
+          if (!loaded) {
+            const local = await loadState();
+            loaded = local ?? seedState();
+            // Best effort sync of the initial seed/local state
+            await auth.syncToRemote(loaded).catch(err => console.warn("Initial remote sync failed:", err));
+          }
+        } else {
+          loaded = await loadState();
+          if (!loaded) loaded = seedState();
         }
-      } else {
-        loaded = await loadState();
-        if (!loaded) loaded = seedState();
-      }
 
-      if (active) {
-        dispatch({ type: "hydrate", state: loaded });
-        const json = JSON.stringify(loaded);
-        lastSavedRef.current = json;
-        remoteVersionRef.current = json;
-        setReady(true);
+        if (active && loaded) {
+          dispatch({ type: "hydrate", state: loaded });
+          const json = JSON.stringify(loaded);
+          lastSavedRef.current = json;
+          remoteVersionRef.current = json;
+        }
+      } catch (err) {
+        console.error("Hydration error:", err);
+        // Fallback to empty/seed state if everything else fails
+        if (active) dispatch({ type: "hydrate", state: seedState() });
+      } finally {
+        if (active) setReady(true);
       }
     };
 
@@ -193,8 +200,9 @@ export function KnowledgeProvider({ children }: { children: ReactNode }) {
         try {
           await auth.syncToRemote(state);
           lastSavedRef.current = JSON.stringify(state);
-          setSyncing(false);
         } catch (err) {
+          console.error("Sync error:", err);
+        } finally {
           setSyncing(false);
         }
       }, 800);

@@ -17,20 +17,13 @@ export function Canvas() {
 
   if (activePage.kind === "whiteboard") {
     return (
-      <motion.div
+      <WhiteboardPage
         key={activePage.id}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.2 }}
-        className="flex h-full min-w-0 flex-1"
-      >
-        <WhiteboardPage
-          page={activePage}
-          syncing={syncing}
-          onTitleChange={(title) => patchPage(activePage.id, { title })}
-          onSceneChange={(scene) => setWhiteboard(activePage.id, scene)}
-        />
-      </motion.div>
+        page={activePage}
+        syncing={syncing}
+        onTitleChange={(title) => patchPage(activePage.id, { title })}
+        onSceneChange={(whiteboard) => setWhiteboard(activePage.id, whiteboard)}
+      />
     );
   }
 
@@ -49,7 +42,8 @@ export function Canvas() {
       <PageAvatar
         avatar={activePage.avatarImage}
         icon={activePage.icon}
-        onChange={(v) => patchPage(activePage.id, { avatarImage: v })}
+        onAvatarChange={(v) => patchPage(activePage.id, { avatarImage: v })}
+        onIconChange={(v) => patchPage(activePage.id, { icon: v })}
       />
 
       <div className="mx-auto w-full max-w-3xl px-8 pb-32 pt-6 md:px-16">

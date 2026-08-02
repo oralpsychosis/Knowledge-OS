@@ -32,8 +32,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { PageTree } from "./page-tree";
 import { FocusAudio } from "./focus-audio";
+import { PageTree } from "./page-tree";
 import { SearchModal } from "./search-modal";
 import { TemplatesModal } from "./templates-modal";
 import { KeysModal } from "./keys-modal";
@@ -234,20 +234,20 @@ export function Sidebar({
                       Create
                     </DropdownMenuLabel>
                     <CreationMenuItem
-                      icon={<FileText />}
+                      icon={<FileText className="size-3.5" />}
                       label="Document"
                       description="Start writing immediately"
                       onSelect={createDocument}
                     />
                     <CreationMenuItem
-                      icon={<PenLine />}
+                      icon={<PenLine className="size-3.5" />}
                       label="Whiteboard"
-                      description="Draw ideas and flows"
+                      description="Sketch ideas freely"
                       onSelect={createWhiteboard}
                     />
                     <DropdownMenuSeparator className="bg-white/[0.07]" />
                     <CreationMenuItem
-                      icon={<LayoutTemplate />}
+                      icon={<LayoutTemplate className="size-3.5" />}
                       label="From a template..."
                       description="Brain dump, project or sprint"
                       onSelect={() => openTool("templates")}
@@ -335,11 +335,12 @@ export function Sidebar({
         </div>
       </motion.aside>
 
-      <SearchModal open={activeTool === "search"} onOpenChange={(open) => !open && closeTool()} />
-      <TemplatesModal
-        open={activeTool === "templates"}
-        onOpenChange={(open) => !open && closeTool()}
-      />
+      {activeTool === "search" && (
+        <SearchModal open onOpenChange={(open) => !open && closeTool()} />
+      )}
+      {activeTool === "templates" && (
+        <TemplatesModal open onOpenChange={(open) => !open && closeTool()} />
+      )}
       <ClientOnly>
         {activeTool === "map" ? (
           <Suspense
@@ -360,7 +361,9 @@ export function Sidebar({
           </Suspense>
         ) : null}
       </ClientOnly>
-      <KeysModal open={activeTool === "shortcuts"} onOpenChange={(open) => !open && closeTool()} />
+      {activeTool === "shortcuts" && (
+        <KeysModal open onOpenChange={(open) => !open && closeTool()} />
+      )}
     </TooltipProvider>
   );
 }
@@ -536,7 +539,7 @@ function WorkspaceMenuContent({
           onSelect={onTemplates}
           className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
         >
-          <LayoutTemplate />
+          <LayoutTemplate className="size-3.5" />
           From a template...
         </DropdownMenuItem>
       )}
@@ -544,7 +547,7 @@ function WorkspaceMenuContent({
         onSelect={onShortcuts}
         className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
       >
-        <Keyboard />
+        <Keyboard className="size-3.5" />
         Keyboard shortcuts
       </DropdownMenuItem>
       {supabase && <DropdownMenuSeparator className="bg-white/[0.07]" />}
@@ -553,7 +556,7 @@ function WorkspaceMenuContent({
           onSelect={auth.signOut}
           className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
         >
-          <LogOut />
+          <LogOut className="size-3.5" />
           Sign out
         </DropdownMenuItem>
       ) : supabase ? (
@@ -561,7 +564,7 @@ function WorkspaceMenuContent({
           onSelect={auth.signIn}
           className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
         >
-          <LogIn />
+          <LogIn className="size-3.5" />
           Sign in with Google
         </DropdownMenuItem>
       ) : null}

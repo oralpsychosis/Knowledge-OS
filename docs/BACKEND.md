@@ -34,6 +34,8 @@ interface KnowledgePage {
   icon?: string;
   coverImage?: string;
   avatarImage?: string;
+  graphX?: number;
+  graphY?: number;
   parentId: string | null;
   childrenIds: string[];
   content: JSONContent;
@@ -41,16 +43,7 @@ interface KnowledgePage {
     version: 1;
     elements: readonly ExcalidrawElement[];
     appState: Partial<
-      Pick<
-        AppState,
-        | "gridModeEnabled"
-        | "gridSize"
-        | "gridStep"
-        | "scrollX"
-        | "scrollY"
-        | "viewBackgroundColor"
-        | "zoom"
-      >
+      Pick<AppState, "gridModeEnabled" | "gridSize" | "gridStep" | "scrollX" | "scrollY" | "viewBackgroundColor" | "zoom">
     >;
   };
   createdAt: number;

@@ -61,8 +61,8 @@ interface KnowledgeOSState {
 
 Each page stores `parentId`, an ordered `childrenIds` list, and an optional `kind`. Missing `kind`
 means a legacy document; newly created pages explicitly use `document` or `whiteboard`. Whiteboard
-pages store a versioned Excalidraw element array plus a compact, serializable viewport/background
-state. They deliberately do not store Excalidraw binary files.
+pages store a versioned Excalidraw element array plus compact view metadata. Binary files are
+deliberately excluded from persistence.
 
 These relationships must remain consistent:
 
@@ -82,8 +82,8 @@ The authoritative full contract is in `src/lib/types.ts`; backend persistence is
 | Page tree     | `src/components/os/page-tree.tsx`         | Recursive hierarchy, whole-row drag reorder/nesting, touch actions, add child, inline delete confirmation, and navigation callbacks |
 | Home          | `src/components/os/home-dashboard.tsx`    | Quick create, recents, sorted all-page list                                                                                         |
 | Page canvas   | `src/components/os/canvas.tsx`            | Cover, avatar, breadcrumbs, title, editor composition                                                                               |
-| Whiteboard    | `src/components/os/whiteboard-page.tsx`   | Client-only loading boundary for whiteboard pages                                                                                   |
-| Board editor  | `src/components/os/whiteboard-editor.tsx` | Excalidraw shell, debounced scene persistence, import/export, fit controls, and no-image guardrails                                 |
+| Whiteboard    | `src/components/os/whiteboard-page.tsx`   | Client-only Excalidraw asset setup and lazy loading boundary                                                                          |
+| Board editor  | `src/components/os/whiteboard-editor.tsx` | Excalidraw shell, autosave, navigation, fit, guarded import, and Excalidraw/PNG/SVG export                                            |
 | Search        | `src/components/os/search-modal.tsx`      | Case-insensitive title-only search and navigation                                                                                   |
 | Templates     | `src/components/os/templates-modal.tsx`   | Creates root pages with predefined Tiptap JSON                                                                                      |
 | Workspace map | `src/components/os/graph-modal.tsx`       | Client-only interactive parent-child map with overview/focus modes, pan/zoom controls, contextual edge emphasis, and a selection-only inspector |
@@ -169,16 +169,10 @@ fonts are served from `public/excalidraw-assets/fonts`, and Knowledge OS-specifi
 scoped under `.knowledge-whiteboard`. The surrounding shell stays dark while the board uses a quiet,
 high-contrast paper surface and violet default strokes.
 
-`whiteboard-editor.tsx` keeps Excalidraw's live scene inside the editor while a board is open.
-`onChange` derives a signature from the element scene version and the small persisted app-state
-subset. A 650 ms debounce suppresses selection/tool noise before dispatching `setWhiteboard`; the
-existing workspace persistence and optional cloud sync then run normally. Pending scene data is
-flushed when the board unmounts.
-
-The board supports `.excalidraw` import and `.excalidraw`, PNG, and SVG export. The image tool,
-clipboard images, file imports containing image/embed elements, theme switching, and native file
-save/load actions are disabled. Excalidraw global keyboard handling remains disabled so Knowledge
-OS shortcuts only compete while the canvas itself is focused.
+`whiteboard-editor.tsx` keeps Excalidraw's live scene inside the editor and debounces compact scene
+updates before dispatching `setWhiteboard`; pending scenes are flushed on unmount. Images, embeds,
+iframes, and binary files are rejected so the whole-workspace JSON remains bounded. The board
+supports Excalidraw import plus Excalidraw, PNG, and SVG export.
 
 ## Keyboard and interaction contracts
 
@@ -203,8 +197,8 @@ OS shortcuts only compete while the canvas itself is focused.
 - Graph navigation supports drag-to-pan, wheel/pinch zoom, explicit zoom controls, and fit-to-view.
 - Opening the workspace map focuses its heading instead of presenting the close control as the
   primary action. The close control stays keyboard-reachable with a restrained focus-visible state.
-- Whiteboards use Excalidraw's local shortcuts only while focused; `Fit`, import, export, and the
-  inline board title remain reachable from the Knowledge OS header.
+- Whiteboards draw directly on a touch-safe canvas; pen, eraser, color, clear, and the inline board
+  title remain reachable from the Knowledge OS header and toolbar.
 - Soundscape playback begins only from an explicit user action. Collapsing the desktop sidebar keeps
   an active mix playing and leaves a pause/resume control in the focus rail; reopening the sidebar
   restores the inline mixer rather than a detached popup.

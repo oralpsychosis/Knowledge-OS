@@ -8,8 +8,10 @@
 - Tailwind CSS v4 for styling, shadcn/Radix for reusable primitives, Lucide for UI icons, and Motion for animation.
 - dnd-kit powers whole-row hierarchy dragging, while Sonner presents reversible move feedback.
 - Tiptap 3 with lowlight syntax highlighting for rich-text documents.
-- React Flow provides the interactive graph canvas; Dagre provides deterministic top-to-bottom hierarchy layout.
-- Whiteboard pages use a lightweight native HTML canvas editor that is lazy-loaded only on the client.
+- React Flow provides the interactive graph canvas; Dagre provides deterministic top-to-bottom
+  hierarchy layout. The graph runtime loads only after hydration and after the map opens.
+- Excalidraw 0.18 provides whiteboard pages and loads only after hydration and after a whiteboard
+  opens.
 
 Path alias `@/*` resolves to `src/*`.
 
@@ -59,8 +61,8 @@ interface KnowledgeOSState {
 
 Each page stores `parentId`, an ordered `childrenIds` list, and an optional `kind`. Missing `kind`
 means a legacy document; newly created pages explicitly use `document` or `whiteboard`. Whiteboard
-pages store a versioned array of serializable pen/eraser strokes plus compact view metadata. They do
-not import or persist third-party whiteboard runtime data.
+pages store a versioned Excalidraw element array plus compact view metadata. Binary files are
+deliberately excluded from persistence.
 
 These relationships must remain consistent:
 
@@ -80,11 +82,11 @@ The authoritative full contract is in `src/lib/types.ts`; backend persistence is
 | Page tree     | `src/components/os/page-tree.tsx`         | Recursive hierarchy, whole-row drag reorder/nesting, touch actions, add child, inline delete confirmation, and navigation callbacks |
 | Home          | `src/components/os/home-dashboard.tsx`    | Quick create, recents, sorted all-page list                                                                                         |
 | Page canvas   | `src/components/os/canvas.tsx`            | Cover, avatar, breadcrumbs, title, editor composition                                                                               |
-| Whiteboard    | `src/components/os/whiteboard-page.tsx`   | Lazy client-side loading boundary for whiteboard pages                                                                               |
-| Board editor  | `src/components/os/whiteboard-editor.tsx` | Native canvas drawing shell with pen, eraser, color controls, clear action, and debounced scene persistence                         |
+| Whiteboard    | `src/components/os/whiteboard-page.tsx`   | Client-only Excalidraw asset setup and lazy loading boundary                                                                          |
+| Board editor  | `src/components/os/whiteboard-editor.tsx` | Excalidraw shell, autosave, navigation, fit, guarded import, and Excalidraw/PNG/SVG export                                            |
 | Search        | `src/components/os/search-modal.tsx`      | Case-insensitive title-only search and navigation                                                                                   |
 | Templates     | `src/components/os/templates-modal.tsx`   | Creates root pages with predefined Tiptap JSON                                                                                      |
-| Workspace map | `src/components/os/graph-modal.tsx`       | Interactive parent-child map with overview/focus modes, pan/zoom controls, contextual edge emphasis, and a selection-only inspector |
+| Workspace map | `src/components/os/graph-modal.tsx`       | Client-only interactive parent-child map with overview/focus modes, pan/zoom controls, contextual edge emphasis, and a selection-only inspector |
 | Soundscape    | `src/components/os/focus-audio.tsx`       | Persistent compact transport plus an opaque inline mixer with master and per-layer volume                                           |
 
 Secondary tools may use Radix dialogs. The primary creation/title/editor path must remain inline.
@@ -145,22 +147,32 @@ Cloud synchronization has no floating canvas badge. When a user is signed in, th
 shows a quiet cloud/check status with a tooltip and uses motion only while a sync is actively running.
 Unsigned and local-only workspaces do not show a misleading cloud status.
 
-The graph keeps React Flow's third-party control, edge, and minimap overrides under the `.calm-graph` scope. Page order feeds Dagre in stable hierarchy order so reopening or switching modes does not arbitrarily shuffle nodes. Overview renders the full tree; Focus renders the active or selected page's ancestors, nearby siblings, children, and grandchildren. Workspaces larger than 24 pages open in Focus mode to keep the first frame legible, while smaller workspaces open in Overview.
+The graph keeps React Flow's third-party control, edge, and minimap overrides under the
+`.calm-graph` scope. `sidebar.tsx` does not statically import the graph module: it waits for
+hydration, waits for the Map action, and then resolves `graph-modal.tsx` through `React.lazy` and
+`Suspense`. This module boundary prevents React Flow and its browser-oriented transitive chunks from
+entering the initial server module graph. Page order feeds Dagre in stable hierarchy order so
+reopening or switching modes does not arbitrarily shuffle nodes. Overview renders the full tree;
+Focus renders the active or selected page's ancestors, nearby siblings, children, and grandchildren.
+Workspaces larger than 24 pages open in Focus mode to keep the first frame legible, while smaller
+workspaces open in Overview.
 
 ## Whiteboard architecture
 
-`whiteboard-page.tsx` uses `React.lazy` so the drawing editor is loaded only after a whiteboard page
-renders in the browser. The loaded editor is a native HTML canvas implementation, so production
-pre-rendering does not evaluate Excalidraw, React Flow, or other browser-heavy whiteboard packages.
+`whiteboard-page.tsx` uses TanStack Router's `ClientOnly` before mounting a small browser setup
+component. That component configures the asset path and only then resolves `whiteboard-editor.tsx`
+through `React.lazy` and `Suspense`. Excalidraw does not support server rendering, so this module
+boundary keeps its code out of the initial server graph and keeps the normal document path free of
+the whiteboard runtime. A render-time `window` guard around a static import is not sufficient:
+bundlers may still evaluate browser-only transitive chunks while loading the SSR route. Excalidraw's
+fonts are served from `public/excalidraw-assets/fonts`, and Knowledge OS-specific overrides are
+scoped under `.knowledge-whiteboard`. The surrounding shell stays dark while the board uses a quiet,
+high-contrast paper surface and violet default strokes.
 
-`whiteboard-editor.tsx` keeps the current stroke list in component refs while drawing, replays
-strokes into the canvas after resize or state changes, and debounces persisted scene updates for 450
-ms before dispatching `setWhiteboard`; the existing workspace persistence and optional cloud sync
-then run normally. Pending strokes are flushed when the board unmounts.
-
-The board supports pen drawing, erasing through canvas compositing, a small color palette, and a
-clear action. It intentionally excludes image/embed import, external whiteboard libraries, and export
-flows so the feature remains small and safe for SSR-sensitive deployments.
+`whiteboard-editor.tsx` keeps Excalidraw's live scene inside the editor and debounces compact scene
+updates before dispatching `setWhiteboard`; pending scenes are flushed on unmount. Images, embeds,
+iframes, and binary files are rejected so the whole-workspace JSON remains bounded. The board
+supports Excalidraw import plus Excalidraw, PNG, and SVG export.
 
 ## Keyboard and interaction contracts
 
@@ -195,12 +207,13 @@ Preserve keyboard behavior and add accessible labels/tooltips when introducing i
 
 ## Known frontend constraints
 
-- There is no automated test suite.
+- There is no automated behavior test suite; `npm.cmd run smoke:ssr` provides a targeted
+  post-build check of the generated server handler.
 - Search inspects titles only, not Tiptap document text.
 - The graph is optimized for hierarchical exploration, not backlinks or semantic relationships.
 - `ready` exists in the store but the current UI has no dedicated hydration/loading surface.
 - Responsive and mobile behavior have not been captured in automated checks.
-- Whiteboard images, embeds, import/export, shapes, text, and live collaboration are intentionally
-  unsupported by the native canvas implementation.
+- Excalidraw libraries are not persisted; whiteboard images, embeds, and live collaboration are
+  intentionally unsupported.
 
 When a change resolves one of these constraints, update this section and append one line to `LOG.md`.

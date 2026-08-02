@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
+import { ClientOnly } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import {
   ChevronDown,
@@ -9,6 +10,7 @@ import {
   Home,
   Keyboard,
   LayoutTemplate,
+  LoaderCircle,
   LogIn,
   LogOut,
   PanelLeftClose,
@@ -34,8 +36,11 @@ import { FocusAudio } from "./focus-audio";
 import { PageTree } from "./page-tree";
 import { SearchModal } from "./search-modal";
 import { TemplatesModal } from "./templates-modal";
-import { GraphModal } from "./graph-modal";
 import { KeysModal } from "./keys-modal";
+
+const GraphModal = lazy(() =>
+  import("./graph-modal").then(({ GraphModal: Component }) => ({ default: Component })),
+);
 
 type SidebarTool = "search" | "templates" | "map" | "shortcuts" | null;
 
@@ -330,10 +335,35 @@ export function Sidebar({
         </div>
       </motion.aside>
 
-      {activeTool === "search" && <SearchModal open={true} onOpenChange={(open) => !open && closeTool()} />}
-      {activeTool === "templates" && <TemplatesModal open={true} onOpenChange={(open) => !open && closeTool()} />}
-      {activeTool === "map" && <GraphModal open={true} onOpenChange={(open) => !open && closeTool()} />}
-      {activeTool === "shortcuts" && <KeysModal open={true} onOpenChange={(open) => !open && closeTool()} />}
+      {activeTool === "search" && (
+        <SearchModal open onOpenChange={(open) => !open && closeTool()} />
+      )}
+      {activeTool === "templates" && (
+        <TemplatesModal open onOpenChange={(open) => !open && closeTool()} />
+      )}
+      <ClientOnly>
+        {activeTool === "map" ? (
+          <Suspense
+            fallback={
+              <div
+                role="status"
+                aria-live="polite"
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+              >
+                <div className="flex items-center gap-2 rounded-xl border border-violet-300/15 bg-[#111119] px-4 py-3 text-xs uppercase tracking-[0.18em] text-white/50 shadow-2xl shadow-black/60">
+                  <LoaderCircle className="size-3.5 animate-spin text-violet-200/70" />
+                  Opening workspace map
+                </div>
+              </div>
+            }
+          >
+            <GraphModal open onOpenChange={(open) => !open && closeTool()} />
+          </Suspense>
+        ) : null}
+      </ClientOnly>
+      {activeTool === "shortcuts" && (
+        <KeysModal open onOpenChange={(open) => !open && closeTool()} />
+      )}
     </TooltipProvider>
   );
 }

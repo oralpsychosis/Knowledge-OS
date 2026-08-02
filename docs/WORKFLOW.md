@@ -68,6 +68,13 @@ npm.cmd run lint
 npm.cmd run build
 ```
 
+When a change can affect the server import graph or SSR boundary, run the smoke request against the
+fresh production artifact:
+
+```powershell
+npm.cmd run smoke:ssr
+```
+
 Then manually verify the affected flow in a browser. High-value regression checks include:
 
 - create a root page and confirm title focus;
@@ -75,9 +82,11 @@ Then manually verify the affected flow in a browser. High-value regression check
 - type in Tiptap and confirm the cursor does not jump;
 - reload and confirm local persistence;
 - when relevant, sign in, sync, reload, and observe a second-client update;
+- run the generated-handler smoke request when changing client-only module boundaries;
 - exercise a server-rendered error path when changing SSR/error handling.
 
-There is no automated test suite today. Add targeted tests when introducing logic that can be isolated without destabilizing the current toolchain.
+There is no broad automated behavior suite today. Add targeted checks when introducing logic that
+can be isolated without destabilizing the current toolchain.
 
 For documentation-only work:
 

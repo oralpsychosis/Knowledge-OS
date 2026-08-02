@@ -34,15 +34,17 @@ interface KnowledgePage {
   icon?: string;
   coverImage?: string;
   avatarImage?: string;
+  graphX?: number;
+  graphY?: number;
   parentId: string | null;
   childrenIds: string[];
   content: JSONContent;
   whiteboard?: {
     version: 1;
-    elements: readonly WhiteboardStroke[];
-    appState?: {
-      viewBackgroundColor?: string;
-    };
+    elements: readonly ExcalidrawElement[];
+    appState: Partial<
+      Pick<AppState, "gridModeEnabled" | "gridSize" | "gridStep" | "scrollX" | "scrollY" | "viewBackgroundColor" | "zoom">
+    >;
   };
   createdAt: number;
   updatedAt: number;
@@ -60,9 +62,9 @@ as one document. Existing pages can omit `kind` and are treated as documents. Wh
 records have their own version marker, but there is still no workspace-level schema version or
 migration function.
 
-Whiteboard persistence intentionally contains only compact native canvas strokes and view metadata.
-The drawing surface has no image/embed import path, so a board cannot silently inflate the full
-workspace JSON with file data.
+Whiteboard persistence intentionally contains no Excalidraw `BinaryFiles`. The image tool, pasted
+images, embeds, and imports containing image/embed elements are blocked so a board cannot silently
+inflate the full workspace JSON with file data.
 
 ## Local persistence
 
@@ -77,7 +79,7 @@ workspace JSON with file data.
 | Save timing     | 400 ms debounce after store changes                                                           |
 | Load order      | IndexedDB first, then legacy/backup localStorage                                              |
 | Migration       | A valid localStorage record is copied into IndexedDB                                          |
-| Images          | Document image content and cover/avatar uploads use data URLs; native canvas whiteboards do not accept image files |
+| Images          | Document image content and cover/avatar uploads use data URLs; whiteboards reject image files |
 
 IndexedDB operations deliberately fail soft for blocked/private environments. localStorage quota failures also fail soft because IndexedDB remains primary.
 
@@ -144,6 +146,13 @@ This is whole-document, last-writer-oriented synchronization. It has no field-le
 - `src/server.ts` wraps the generated server entry and converts catastrophic/swallowed h3 JSON failures into a stable HTML error page.
 - `src/lib/error-capture.ts` preserves useful error/cause information that h3 may otherwise flatten.
 - `src/routes/__root.tsx` provides the React error boundary and forwards preview errors to Lovable telemetry.
+- React Flow and Excalidraw are optional client-only module graphs. The sidebar lazily imports the
+  graph only after the Map action, while `whiteboard-page.tsx` waits for hydration and asset-path
+  setup before importing the editor. Do not replace these boundaries with static imports plus
+  render-time `window` checks: server bundling can evaluate a browser-only transitive chunk before a
+  guarded component renders.
+- After a production build, `npm.cmd run smoke:ssr` invokes the generated Nitro fetch handler and
+  requires `/` to return the Knowledge OS HTML shell with status 200.
 
 There are currently no application server functions. If sensitive operations are added, implement them server-side and keep secrets out of the Vite client environment.
 

@@ -1,37 +1,27 @@
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
+import type { AppState } from "@excalidraw/excalidraw/types";
+
 export type JSONContent = Record<string, unknown>;
 
 export type PageKind = "document" | "whiteboard";
 
-export interface WhiteboardPoint {
-  x: number;
-  y: number;
-}
-
-export type WhiteboardElementType = "stroke" | "rectangle" | "circle" | "line" | "text";
-
-export interface WhiteboardElement {
-  id: string;
-  type: WhiteboardElementType;
-  x: number;
-  y: number;
-  width?: number;
-  height?: number;
-  points?: WhiteboardPoint[];
-  text?: string;
-  color: string;
-  size: number;
-  fill?: boolean; // New: optional background fill
-  tool?: "pen" | "eraser";
-}
-
-export interface WhiteboardAppState {
-  viewBackgroundColor?: string;
-}
+export type WhiteboardAppState = Partial<
+  Pick<
+    AppState,
+    | "gridModeEnabled"
+    | "gridSize"
+    | "gridStep"
+    | "scrollX"
+    | "scrollY"
+    | "viewBackgroundColor"
+    | "zoom"
+  >
+>;
 
 export interface WhiteboardScene {
-  version: 2;
-  elements: readonly WhiteboardElement[];
-  appState?: WhiteboardAppState;
+  version: 1;
+  elements: readonly ExcalidrawElement[];
+  appState: WhiteboardAppState;
 }
 
 export interface KnowledgePage {

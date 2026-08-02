@@ -10,7 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { Maximize2, ZoomIn, ZoomOut, FileText } from "lucide-react";
+import { Maximize2, X, ZoomIn, ZoomOut } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Public types                                                       */
@@ -22,8 +22,6 @@ export interface GraphNode {
   /** Optional starting position (world space). Auto-arranged in a grid if omitted. */
   x?: number;
   y?: number;
-  /** Optional custom icon. Defaults to a plain page icon. */
-  icon?: ReactNode;
 }
 
 export interface GraphEdge {
@@ -35,13 +33,18 @@ export interface GraphEdge {
 export interface GraphViewProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
-  /** Fired when a card is clicked (a real click, not the end of a drag) — open that page. */
   onNodeOpen?: (node: GraphNode) => void;
   onNodeSelect?: (node: GraphNode | null) => void;
   /** Fired when a card is dropped in a new spot, so the position can be persisted. */
   onNodeMove?: (id: string, pos: { x: number; y: number }) => void;
   selectedId?: string | null;
   className?: string;
+  /** Title shown in the header strip. Set to null to hide the header entirely. */
+  title?: ReactNode | null;
+  /** Called when the close (×) button is pressed. Omit to hide the button. */
+  onClose?: () => void;
+  /** Show the small control-hints line bottom-left. Default true. */
+  showHints?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -49,11 +52,17 @@ export interface GraphViewProps {
 /* ------------------------------------------------------------------ */
 
 const CARD_WIDTH = 200;
-const CARD_MIN_HEIGHT = 64;
-const GRID_GAP_X = 64;
-const GRID_GAP_Y = 48;
+const CARD_MIN_HEIGHT = 60;
+const GRID_GAP_X = 56;
+const GRID_GAP_Y = 44;
+const GRID_PADDING = 48;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 2.5;
+
+function initialOf(label: string) {
+  const trimmed = label.trim();
+  return trimmed ? trimmed[0].toUpperCase() : "?";
+}
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
@@ -67,13 +76,14 @@ export default function GraphView({
   onNodeMove,
   selectedId = null,
   className = "",
+  title = "Workspace Graph",
+  onClose,
+  showHints = true,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // World-space position of every card. Seeded once per node id; never
-  // recomputed after that, so a card never jumps once it's been placed.
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
-  const [tick, setTick] = useState(0); // bump to re-render after ref mutations
+  const [tick, setTick] = useState(0);
 
   const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -114,8 +124,8 @@ export default function GraphView({
       const col = i % cols;
       const row = Math.floor(i / cols);
       map.set(n.id, {
-        x: col * (CARD_WIDTH + GRID_GAP_X),
-        y: row * (CARD_MIN_HEIGHT + GRID_GAP_Y),
+        x: GRID_PADDING + col * (CARD_WIDTH + GRID_GAP_X),
+        y: GRID_PADDING + row * (CARD_MIN_HEIGHT + GRID_GAP_Y),
       });
     });
     if (seededAny) setTick((t) => t + 1);
@@ -147,10 +157,6 @@ export default function GraphView({
     [zoomBy]
   );
 
-  const resetView = useCallback(() => {
-    setView({ x: 0, y: 0, k: 1 });
-  }, []);
-
   const fitToNodes = useCallback(() => {
     const el = containerRef.current;
     const map = positionsRef.current;
@@ -169,46 +175,43 @@ export default function GraphView({
     const w = maxX - minX || 1;
     const h = maxY - minY || 1;
     const k = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(rect.width / (w + 160), rect.height / (h + 160))));
-    setView({
-      k,
-      x: rect.width / 2 - (minX + w / 2) * k,
-      y: rect.height / 2 - (minY + h / 2) * k,
-    });
+    setView({ k, x: rect.width / 2 - (minX + w / 2) * k, y: rect.height / 2 - (minY + h / 2) * k });
   }, []);
 
   /* ---------------- background pan ------------------------------------ */
 
   const handleBackgroundPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
-      if (e.target !== e.currentTarget) return; // only start pan from empty canvas, not a card
+      if (e.target !== e.currentTarget) return;
       panRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, viewX: view.x, viewY: view.y };
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
     },
     [view.x, view.y]
   );
 
-  const handlePointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    const pan = panRef.current;
-    if (pan && pan.pointerId === e.pointerId) {
-      const dx = e.clientX - pan.startX;
-      const dy = e.clientY - pan.startY;
-      setView((v) => ({ ...v, x: pan.viewX + dx, y: pan.viewY + dy }));
-      return;
-    }
+  const handlePointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const pan = panRef.current;
+      if (pan && pan.pointerId === e.pointerId) {
+        const dx = e.clientX - pan.startX;
+        const dy = e.clientY - pan.startY;
+        setView((v) => ({ ...v, x: pan.viewX + dx, y: pan.viewY + dy }));
+        return;
+      }
 
-    const drag = dragRef.current;
-    if (drag && drag.pointerId === e.pointerId) {
-      // Direct 1:1 tracking: screen-space pointer delta converted to world
-      // space by the current zoom level. No simulation, no lag, no snap-back.
-      const dxScreen = e.clientX - drag.startClientX;
-      const dyScreen = e.clientY - drag.startClientY;
-      if (Math.abs(dxScreen) > 2 || Math.abs(dyScreen) > 2) drag.moved = true;
-      const nextX = drag.startNodeX + dxScreen / view.k;
-      const nextY = drag.startNodeY + dyScreen / view.k;
-      positionsRef.current.set(drag.id, { x: nextX, y: nextY });
-      setTick((t) => t + 1);
-    }
-  }, [view.k]);
+      const drag = dragRef.current;
+      if (drag && drag.pointerId === e.pointerId) {
+        const dxScreen = e.clientX - drag.startClientX;
+        const dyScreen = e.clientY - drag.startClientY;
+        if (Math.abs(dxScreen) > 2 || Math.abs(dyScreen) > 2) drag.moved = true;
+        const nextX = drag.startNodeX + dxScreen / view.k;
+        const nextY = drag.startNodeY + dyScreen / view.k;
+        positionsRef.current.set(drag.id, { x: nextX, y: nextY });
+        setTick((t) => t + 1);
+      }
+    },
+    [view.k]
+  );
 
   /* ---------------- node interactions -------------------------------- */
 
@@ -225,7 +228,6 @@ export default function GraphView({
   const handlePointerUp = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (panRef.current?.pointerId === e.pointerId) panRef.current = null;
-
       const drag = dragRef.current;
       if (drag && drag.pointerId === e.pointerId) {
         if (drag.moved) {
@@ -259,7 +261,7 @@ export default function GraphView({
   /* ---------------- derived render data -------------------------------- */
 
   const positions = positionsRef.current;
-  void tick; // read to keep this render subscribed to position/selection changes
+  void tick;
 
   const activeId = hoveredId ?? selected;
   const neighborIds = useMemo(() => {
@@ -273,144 +275,197 @@ export default function GraphView({
   }, [edges, activeId]);
 
   return (
-    <div className={`relative h-full w-full overflow-hidden bg-[#08080A] ${className}`}>
-      {/* ambient glow — fixed to the viewport, doesn't pan/zoom with the canvas */}
-      <div className="pointer-events-none absolute inset-0">
-        <div
-          className="absolute left-1/2 top-1/3 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full opacity-[0.16] blur-[140px]"
-          style={{ background: "radial-gradient(circle, #7c6cf6 0%, transparent 70%)" }}
-        />
-        <div
-          className="absolute right-1/4 bottom-1/4 h-[420px] w-[420px] translate-x-1/2 translate-y-1/2 rounded-full opacity-[0.10] blur-[120px]"
-          style={{ background: "radial-gradient(circle, #6ea8fe 0%, transparent 70%)" }}
-        />
-      </div>
+    <div className={`relative flex h-full w-full flex-col overflow-hidden bg-[#0B0B0D] ${className}`}>
+      {/* header — real layout space, never overlays the canvas */}
+      {title !== null && (
+        <div className="flex h-11 flex-none items-center justify-between border-b border-white/[0.06] px-4">
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#8b7cf6]/70" />
+            <span className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+              {title}
+            </span>
+          </div>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              aria-label="Close"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      )}
 
-      <div
-        ref={containerRef}
-        className="absolute inset-0 touch-none cursor-grab active:cursor-grabbing"
-        onWheel={handleWheel}
-        onPointerDown={handleBackgroundPointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-      >
+      {/* canvas */}
+      <div className="relative min-h-0 flex-1">
+        {/* quiet ambient light — a single soft source from above, plus fine grain.
+            deliberately not a pair of colorful blurred blobs; that reads as a
+            template default rather than a considered surface. */}
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div
+            className="absolute left-1/2 top-0 h-[520px] w-[900px] -translate-x-1/2"
+            style={{ background: "radial-gradient(ellipse at top, rgba(139,124,246,0.07), transparent 65%)" }}
+          />
+          <svg className="absolute inset-0 h-full w-full opacity-[0.05] mix-blend-overlay">
+            <filter id="grain">
+              <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} stitchTiles="stitch" />
+              <feColorMatrix type="saturate" values="0" />
+            </filter>
+            <rect width="100%" height="100%" filter="url(#grain)" />
+          </svg>
+        </div>
+
         <div
-          className="absolute left-0 top-0"
-          style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transformOrigin: "0 0" }}
+          ref={containerRef}
+          className="absolute inset-0 touch-none cursor-grab active:cursor-grabbing"
+          onWheel={handleWheel}
+          onPointerDown={handleBackgroundPointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
         >
-          {/* edges — drawn first, so cards sit visually on top of the lines */}
-          <svg
-            className="absolute overflow-visible"
-            style={{ left: 0, top: 0, width: 1, height: 1, pointerEvents: "none" }}
+          <div
+            className="absolute left-0 top-0"
+            style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transformOrigin: "0 0" }}
           >
-            {edges.map((e, i) => {
-              const a = positions.get(e.source);
-              const b = positions.get(e.target);
-              if (!a || !b) return null;
-              const ax = a.x + CARD_WIDTH / 2;
-              const ay = a.y + CARD_MIN_HEIGHT / 2;
-              const bx = b.x + CARD_WIDTH / 2;
-              const by = b.y + CARD_MIN_HEIGHT / 2;
-              const mx = (ax + bx) / 2;
-              const my = (ay + by) / 2;
-              const isFocused = !!activeId && (e.source === activeId || e.target === activeId);
+            {/* edges */}
+            <svg
+              className="absolute overflow-visible"
+              style={{ left: 0, top: 0, width: 1, height: 1, pointerEvents: "none" }}
+            >
+              {edges.map((e, i) => {
+                const a = positions.get(e.source);
+                const b = positions.get(e.target);
+                if (!a || !b) return null;
+                const ax = a.x + CARD_WIDTH / 2;
+                const ay = a.y + CARD_MIN_HEIGHT / 2;
+                const bx = b.x + CARD_WIDTH / 2;
+                const by = b.y + CARD_MIN_HEIGHT / 2;
+                const mx = (ax + bx) / 2;
+                const my = (ay + by) / 2;
+                const isFocused = !!activeId && (e.source === activeId || e.target === activeId);
+                return (
+                  <path
+                    key={`${e.source}-${e.target}-${i}`}
+                    d={`M ${ax} ${ay} Q ${mx} ${my} ${bx} ${by}`}
+                    fill="none"
+                    stroke={isFocused ? "#8b7cf6" : "#2b2b30"}
+                    strokeWidth={isFocused ? 1.4 : 1}
+                    strokeOpacity={isFocused ? 0.75 : 0.4}
+                    style={{ transition: "stroke 150ms ease, stroke-opacity 150ms ease" }}
+                  />
+                );
+              })}
+            </svg>
+
+            {/* cards */}
+            {nodes.map((n) => {
+              const pos = positions.get(n.id);
+              if (!pos) return null;
+              const isSelected = selected === n.id;
+              const isHovered = hoveredId === n.id;
+              const isDimmed = !!neighborIds && !neighborIds.has(n.id) && !isHovered && !isSelected;
+
               return (
-                <path
-                  key={`${e.source}-${e.target}-${i}`}
-                  d={`M ${ax} ${ay} Q ${mx} ${my} ${bx} ${by}`}
-                  fill="none"
-                  stroke={isFocused ? "#8b7cf6" : "#2b2b34"}
-                  strokeWidth={isFocused ? 1.5 : 1}
-                  strokeOpacity={isFocused ? 0.8 : 0.45}
-                  style={{ transition: "stroke 150ms ease, stroke-opacity 150ms ease" }}
-                />
+                <div
+                  key={n.id}
+                  className="absolute select-none overflow-hidden rounded-xl border transition-[opacity,border-color,background-color] duration-150"
+                  style={{
+                    left: pos.x,
+                    top: pos.y,
+                    width: CARD_WIDTH,
+                    minHeight: CARD_MIN_HEIGHT,
+                    opacity: isDimmed ? 0.38 : 1,
+                    background: isHovered || isSelected ? "rgba(255,255,255,0.055)" : "rgba(255,255,255,0.03)",
+                    borderColor: isSelected ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.08)",
+                    cursor: "grab",
+                  }}
+                  onPointerDown={(e) => handleCardPointerDown(e, n.id)}
+                  onPointerEnter={() => setHoveredId(n.id)}
+                  onPointerLeave={() => setHoveredId((h) => (h === n.id ? null : h))}
+                >
+                  {/* thin top accent instead of a glow bloom — quieter, more precise */}
+                  <div
+                    className="absolute inset-x-0 top-0 h-[2px] transition-opacity duration-150"
+                    style={{
+                      background: "linear-gradient(90deg, #8b7cf6, #6ea8fe)",
+                      opacity: isSelected ? 1 : isHovered ? 0.55 : 0,
+                    }}
+                  />
+                  <div className="flex h-full items-start gap-2.5 px-3.5 py-3">
+                    <span
+                      className="flex h-5 w-5 flex-none items-center justify-center rounded-[5px] font-mono text-[10px] font-semibold"
+                      style={{
+                        background: "rgba(255,255,255,0.06)",
+                        color: isHovered || isSelected ? "#c9c1fb" : "#71717a",
+                      }}
+                    >
+                      {initialOf(n.label)}
+                    </span>
+                    <span
+                      className="pt-px text-[13px] font-medium leading-snug text-zinc-200"
+                      style={{
+                        display: "-webkit-box",
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: "vertical",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {n.label}
+                    </span>
+                  </div>
+                </div>
               );
             })}
-          </svg>
-
-          {/* cards */}
-          {nodes.map((n) => {
-            const pos = positions.get(n.id);
-            if (!pos) return null;
-            const isSelected = selected === n.id;
-            const isHovered = hoveredId === n.id;
-            const isDimmed = !!neighborIds && !neighborIds.has(n.id) && !isHovered && !isSelected;
-
-            return (
-              <div
-                key={n.id}
-                className="absolute select-none rounded-2xl border backdrop-blur-xl transition-[opacity,box-shadow,border-color] duration-150"
-                style={{
-                  left: pos.x,
-                  top: pos.y,
-                  width: CARD_WIDTH,
-                  minHeight: CARD_MIN_HEIGHT,
-                  opacity: isDimmed ? 0.4 : 1,
-                  background: "rgba(255,255,255,0.045)",
-                  borderColor: isSelected ? "rgba(139,124,246,0.65)" : "rgba(255,255,255,0.09)",
-                  boxShadow: isSelected
-                    ? "0 0 0 1px rgba(139,124,246,0.25), 0 8px 28px -6px rgba(124,108,246,0.45)"
-                    : isHovered
-                      ? "0 8px 24px -8px rgba(0,0,0,0.5)"
-                      : "0 4px 14px -6px rgba(0,0,0,0.4)",
-                  cursor: "grab",
-                }}
-                onPointerDown={(e) => handleCardPointerDown(e, n.id)}
-                onPointerEnter={() => setHoveredId(n.id)}
-                onPointerLeave={() => setHoveredId((h) => (h === n.id ? null : h))}
-              >
-                <div className="flex h-full items-start gap-2.5 px-4 py-3.5">
-                  <span
-                    className="mt-0.5 flex h-5 w-5 flex-none items-center justify-center rounded-md text-zinc-400"
-                    style={{ opacity: isHovered || isSelected ? 1 : 0.7 }}
-                  >
-                    {n.icon ?? <FileText size={15} />}
-                  </span>
-                  <span
-                    className="text-[13.5px] font-medium leading-snug text-zinc-100"
-                    style={{
-                      display: "-webkit-box",
-                      WebkitLineClamp: 3,
-                      WebkitBoxOrient: "vertical",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {n.label}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+          </div>
         </div>
-      </div>
 
-      {/* zoom controls */}
-      <div className="absolute bottom-4 right-4 flex flex-col gap-1 rounded-xl border border-white/10 bg-white/5 p-1 backdrop-blur-md">
-        <button
-          type="button"
-          onClick={(e) => zoomBy(1.25, { x: e.clientX, y: e.clientY })}
-          className="rounded-lg p-2 text-zinc-300 transition hover:bg-white/10 hover:text-white"
-          aria-label="Zoom in"
-        >
-          <ZoomIn size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={(e) => zoomBy(0.8, { x: e.clientX, y: e.clientY })}
-          className="rounded-lg p-2 text-zinc-300 transition hover:bg-white/10 hover:text-white"
-          aria-label="Zoom out"
-        >
-          <ZoomOut size={16} />
-        </button>
-        <button
-          type="button"
-          onClick={fitToNodes}
-          className="rounded-lg p-2 text-zinc-300 transition hover:bg-white/10 hover:text-white"
-          aria-label="Fit to view"
-        >
-          <Maximize2 size={16} />
-        </button>
+        {/* control hints — quiet inline text, no boxed pill */}
+        {showHints && (
+          <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-3 font-mono text-[10.5px] text-zinc-600">
+            <span>
+              <span className="text-zinc-500">drag</span> move
+            </span>
+            <span className="text-zinc-700">·</span>
+            <span>
+              <span className="text-zinc-500">scroll</span> zoom
+            </span>
+            <span className="text-zinc-700">·</span>
+            <span>
+              <span className="text-zinc-500">click</span> open
+            </span>
+          </div>
+        )}
+
+        {/* zoom controls */}
+        <div className="absolute bottom-3 right-3 flex flex-col gap-0.5 rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
+          <button
+            type="button"
+            onClick={(e) => zoomBy(1.25, { x: e.clientX, y: e.clientY })}
+            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            aria-label="Zoom in"
+          >
+            <ZoomIn size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={(e) => zoomBy(0.8, { x: e.clientX, y: e.clientY })}
+            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            aria-label="Zoom out"
+          >
+            <ZoomOut size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={fitToNodes}
+            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            aria-label="Fit to view"
+          >
+            <Maximize2 size={14} />
+          </button>
+        </div>
       </div>
     </div>
   );

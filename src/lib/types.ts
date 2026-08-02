@@ -31,6 +31,8 @@ export interface KnowledgePage {
   icon?: string;
   coverImage?: string;
   avatarImage?: string;
+  graphX?: number;
+  graphY?: number;
   parentId: string | null;
   childrenIds: string[];
   content: JSONContent;

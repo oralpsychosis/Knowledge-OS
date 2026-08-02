@@ -1,24 +1,34 @@
-import { Network } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { lazy, Suspense } from "react";
+import { LoaderCircle, Waypoints } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { ClientOnly } from "./client-only";
+
+const GraphCanvas = lazy(() => import("./graph-canvas"));
 
 interface GraphModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+function Fallback() {
+  return (
+    <div className="flex h-[80vh] w-full flex-col items-center justify-center gap-3 bg-[#08080c] text-white/40">
+      <LoaderCircle className="size-6 animate-spin text-violet-400" />
+      <span className="text-xs uppercase tracking-widest">Loading workspace map...</span>
+    </div>
+  );
+}
+
 export function GraphModal({ open, onOpenChange }: GraphModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="border-white/10 bg-[#0e0e15] p-6 text-center text-white">
-        <div className="mx-auto flex size-12 items-center justify-center rounded-2xl border border-violet-300/15 bg-violet-400/[0.07]">
-          <Network className="size-5 text-violet-200" />
-        </div>
-        <DialogTitle className="mt-4 text-base font-medium">
-          Workspace Map (Disabled for Diagnostic Test)
-        </DialogTitle>
-        <DialogDescription className="mt-1 text-xs text-white/40">
-          React Flow and Dagre are temporarily unlinked to test production build stability.
-        </DialogDescription>
+      <DialogContent className="max-w-4xl border-white/10 bg-[#0a0a0f] p-2 text-white shadow-2xl">
+        <DialogTitle className="sr-only">Workspace Map</DialogTitle>
+        <ClientOnly fallback={<Fallback />}>
+          <Suspense fallback={<Fallback />}>
+            <GraphCanvas onClose={() => onOpenChange(false)} />
+          </Suspense>
+        </ClientOnly>
       </DialogContent>
     </Dialog>
   );

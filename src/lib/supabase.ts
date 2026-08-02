@@ -1,12 +1,21 @@
 import { createClient } from "@supabase/supabase-js";
 import type { KnowledgeOSState } from "./types";
 
+// Vercel might inject these as strings or undefined. We ensure they are valid URLs.
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-// Defensive check: ensure strings exist and URL is valid before attempting initialization.
-// This prevents crashes if variables are missing or set to placeholder strings like "undefined".
-const canInitialize = Boolean(url && key && url.startsWith("http"));
+const canInitialize = Boolean(
+  url && 
+  key && 
+  typeof url === "string" && 
+  url.startsWith("http") &&
+  !url.includes("YOUR_SUPABASE_URL") // Block common placeholder strings
+);
+
+if (!canInitialize && typeof window !== "undefined") {
+  console.warn("Supabase is not configured. Falling back to local-only mode.");
+}
 
 export const supabase = canInitialize ? createClient(url!, key!) : null;
 
@@ -15,17 +24,23 @@ export const supabase = canInitialize ? createClient(url!, key!) : null;
 /* ------------------------------------------------------------------ */
 
 export async function signInWithGoogle() {
-  if (!supabase) return;
-  await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin,
-      queryParams: {
-        prompt: 'select_account',
-        access_type: 'offline',
+  if (!supabase || typeof window === "undefined") return;
+  
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+        queryParams: {
+          prompt: 'select_account',
+          access_type: 'offline',
+        },
       },
-    },
-  });
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.error("Sign in failed:", err);
+  }
 }
 
 export async function signOut() {
@@ -34,12 +49,11 @@ export async function signOut() {
 }
 
 /**
- * Monitors authentication state. If Supabase is not configured, it immediately
- * signals a null user so the application can finish loading in local-only mode.
+ * Monitors authentication state. If Supabase is not configured or fails,
+ * it immediately signals a null user so the app can finish hydrating.
  */
 export function onAuthChange(cb: (user: import("@supabase/supabase-js").User | null) => void) {
   if (!supabase) {
-    // Critical fix: notify the listener immediately so AuthProvider.loading becomes false.
     cb(null);
     return () => {};
   }
@@ -48,12 +62,15 @@ export function onAuthChange(cb: (user: import("@supabase/supabase-js").User | n
     cb(session?.user ?? null);
   });
   
-  // Check current session
-  supabase.auth.getSession().then(({ data: { session } }) => {
-    cb(session?.user ?? null);
-  }).catch(() => {
-    cb(null);
-  });
+  // Check current session immediately
+  supabase.auth.getSession()
+    .then(({ data: { session } }) => {
+      cb(session?.user ?? null);
+    })
+    .catch((err) => {
+      console.error("Session check failed:", err);
+      cb(null);
+    });
   
   return () => data?.subscription.unsubscribe();
 }
@@ -62,7 +79,6 @@ export function onAuthChange(cb: (user: import("@supabase/supabase-js").User | n
 /*  Document sync                                                      */
 /* ------------------------------------------------------------------ */
 
-// The table uses user_id (uuid, unique), content (jsonb), and updated_at (timestamptz)
 const TABLE = "documents";
 
 export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState | null> {
@@ -75,11 +91,11 @@ export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState
       .maybeSingle();
     
     if (error) {
-      console.error("Supabase fetch error:", error);
+      // 404 or table missing is handled gracefully
+      console.warn("Remote state fetch note:", error.message);
       return null;
     }
-    if (data?.content) return data.content as KnowledgeOSState;
-    return null;
+    return (data?.content as KnowledgeOSState) || null;
   } catch (err) {
     console.error("Failed to fetch remote state:", err);
     return null;
@@ -99,33 +115,37 @@ export async function upsertRemoteState(userId: string, state: KnowledgeOSState)
     );
     if (error) throw error;
   } catch (err) {
-    console.error("Failed to sync to remote:", err);
-    throw err;
+    // We log but don't re-throw to prevent breaking the local UI loop
+    console.error("Remote sync failed:", err);
   }
 }
 
 export function subscribeToRemoteChanges(userId: string, onUpdate: (state: KnowledgeOSState) => void) {
   if (!supabase) return () => {};
   
-  const channel = supabase
-    .channel(`sync:${userId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: TABLE,
-        filter: `user_id=eq.${userId}`,
-      },
-      (payload) => {
-        if (payload.new && (payload.new as any).content) {
-          onUpdate((payload.new as any).content as KnowledgeOSState);
+  try {
+    const channel = supabase
+      .channel(`sync:${userId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: TABLE,
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const next = (payload.new as any)?.content;
+          if (next) onUpdate(next as KnowledgeOSState);
         }
-      }
-    )
-    .subscribe();
+      )
+      .subscribe();
 
-  return () => {
-    supabase.removeChannel(channel);
-  };
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  } catch (err) {
+    console.error("Subscription failed:", err);
+    return () => {};
+  }
 }

@@ -18,3 +18,4 @@
 - 2026-08-02T14:10:00+00:00 | testing | Temporarily stubbed Excalidraw and React Flow/Dagre components to test production deployment stability | validation: verification of clean bundle without canvas/graph dependencies
 - 2026-08-02T14:35:00+00:00 | frontend | Safely restored Excalidraw whiteboard and React Flow graph map using strict ClientOnly boundaries and lazy loading | validation: verification of SSR isolation and client hydration
 - 2026-08-02T15:00:00+00:00 | frontend | Wrapped Excalidraw and React Flow dynamic imports strictly inside useEffect to prevent Node SSR module evaluation crashes | validation: manual verification of client-side dynamic import execution
+- 2026-08-02T15:30:00+00:00 | frontend | Simplified core application UI imports to remove unnecessary Suspense wrappers while keeping Excalidraw and React Flow isolated for client-side rendering | validation: manual verification of preview load and layout stability

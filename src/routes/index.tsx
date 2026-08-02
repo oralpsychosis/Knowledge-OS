@@ -1,13 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState, lazy, Suspense } from "react";
-import { LoaderCircle, PanelLeftOpen } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { PanelLeftOpen } from "lucide-react";
 import { KnowledgeProvider } from "@/store/knowledge";
 import { AmbientBackground } from "@/components/os/ambient-background";
+import { Sidebar } from "@/components/os/sidebar";
+import { Canvas } from "@/components/os/canvas";
 import { Toaster } from "@/components/ui/sonner";
-
-// Lazy load the main workspace surfaces
-const Sidebar = lazy(() => import("@/components/os/sidebar").then(m => ({ default: m.Sidebar })));
-const Canvas = lazy(() => import("@/components/os/canvas").then(m => ({ default: m.Canvas })));
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -50,16 +48,14 @@ function WorkspaceContent({
           />
         )}
         
-        <Suspense fallback={null}>
-          <Sidebar
-            collapsed={collapsed}
-            isMobile={isMobile}
-            mobileOpen={mobileOpen}
-            onToggle={() => setCollapsed((v) => !v)}
-            onMobileClose={() => setMobileOpen(false)}
-            onMobileToolClose={() => mobileOpenerRef.current?.focus()}
-          />
-        </Suspense>
+        <Sidebar
+          collapsed={collapsed}
+          isMobile={isMobile}
+          mobileOpen={mobileOpen}
+          onToggle={() => setCollapsed((v) => !v)}
+          onMobileClose={() => setMobileOpen(false)}
+          onMobileToolClose={() => mobileOpenerRef.current?.focus()}
+        />
 
         {!mobileOpen && (
           <button
@@ -74,13 +70,7 @@ function WorkspaceContent({
         )}
 
         <div className="flex min-w-0 flex-1 overflow-hidden">
-          <Suspense fallback={
-            <div className="flex flex-1 items-center justify-center bg-transparent">
-              <LoaderCircle className="size-5 animate-spin text-white/20" />
-            </div>
-          }>
-            <Canvas />
-          </Suspense>
+          <Canvas />
         </div>
       </div>
       <Toaster position="bottom-right" theme="dark" />
@@ -89,14 +79,12 @@ function WorkspaceContent({
 }
 
 function Index() {
-  const [mounted, setMounted] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileOpenerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    setMounted(true);
     const media = window.matchMedia("(max-width: 767px)");
     const update = () => setIsMobile(media.matches);
     update();
@@ -107,20 +95,14 @@ function Index() {
   return (
     <>
       <AmbientBackground />
-      {mounted ? (
-        <WorkspaceContent 
-          collapsed={collapsed}
-          setCollapsed={setCollapsed}
-          isMobile={isMobile}
-          mobileOpen={mobileOpen}
-          setMobileOpen={setMobileOpen}
-          mobileOpenerRef={mobileOpenerRef}
-        />
-      ) : (
-        <div className="flex h-dvh w-full items-center justify-center">
-          <LoaderCircle className="size-6 animate-spin text-white/10" />
-        </div>
-      )}
+      <WorkspaceContent 
+        collapsed={collapsed}
+        setCollapsed={setCollapsed}
+        isMobile={isMobile}
+        mobileOpen={mobileOpen}
+        setMobileOpen={setMobileOpen}
+        mobileOpenerRef={mobileOpenerRef}
+      />
     </>
   );
 }

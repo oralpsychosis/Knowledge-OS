@@ -19,3 +19,4 @@
 - 2026-08-02T15:00:00+00:00 | testing | Temporarily bypassed Excalidraw and React Flow imports to diagnose page load stability | validation: manual verification of diagnostic placeholder
 - 2026-08-02T15:45:00+00:00 | graph | Re-enabled React Flow Graph Map with client-side lazy loading while keeping Excalidraw whiteboard disabled | validation: manual verification of graph modal rendering and preview stability
 - 2026-08-02T16:10:00+00:00 | whiteboard | Fully re-enabled Excalidraw Whiteboard Editor with client-side lazy loading, completing the restoration of core workspace tools | validation: manual verification of whiteboard loading and interaction
+- 2026-08-02T16:45:00+00:00 | deployment | Strictly disabled Excalidraw in the UI to prevent deployment crashes while restoring the focused Calm-Focus-Graph system | validation: manual verification of graph mode switching and hidden whiteboard entry points

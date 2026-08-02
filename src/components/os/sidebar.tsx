@@ -12,7 +12,6 @@ import {
   LogIn,
   LogOut,
   PanelLeftClose,
-  PenLine,
   Plus,
   Search,
   Waypoints,
@@ -59,7 +58,7 @@ export function Sidebar({
   onMobileClose,
   onMobileToolClose,
 }: SidebarProps) {
-  const { addPage, addWhiteboard, select, state, syncing } = useKnowledge();
+  const { addPage, select, state, syncing } = useKnowledge();
   const auth = useAuth();
   const [activeTool, setActiveTool] = useState<SidebarTool>(null);
   const mobileCloseRef = useRef<HTMLButtonElement>(null);
@@ -91,10 +90,13 @@ export function Sidebar({
     finishNavigation();
   }
 
+  // Whiteboard creation is disabled
+  /*
   function createWhiteboard() {
     addWhiteboard(null);
     finishNavigation();
   }
+  */
 
   function openTool(tool: Exclude<SidebarTool, null>) {
     setActiveTool(tool);
@@ -229,20 +231,15 @@ export function Sidebar({
                       Create
                     </DropdownMenuLabel>
                     <CreationMenuItem
-                      icon={<FileText />}
+                      icon={<FileText className="size-3.5" />}
                       label="Document"
                       description="Start writing immediately"
                       onSelect={createDocument}
                     />
-                    <CreationMenuItem
-                      icon={<PenLine />}
-                      label="Whiteboard"
-                      description="Draw ideas and flows"
-                      onSelect={createWhiteboard}
-                    />
+                    {/* Whiteboard menu item is disabled */}
                     <DropdownMenuSeparator className="bg-white/[0.07]" />
                     <CreationMenuItem
-                      icon={<LayoutTemplate />}
+                      icon={<LayoutTemplate className="size-3.5" />}
                       label="From a template..."
                       description="Brain dump, project or sprint"
                       onSelect={() => openTool("templates")}
@@ -509,7 +506,7 @@ function WorkspaceMenuContent({
           onSelect={onTemplates}
           className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
         >
-          <LayoutTemplate />
+          <LayoutTemplate className="size-3.5" />
           From a template...
         </DropdownMenuItem>
       )}
@@ -517,7 +514,7 @@ function WorkspaceMenuContent({
         onSelect={onShortcuts}
         className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
       >
-        <Keyboard />
+        <Keyboard className="size-3.5" />
         Keyboard shortcuts
       </DropdownMenuItem>
       {supabase && <DropdownMenuSeparator className="bg-white/[0.07]" />}
@@ -526,7 +523,7 @@ function WorkspaceMenuContent({
           onSelect={auth.signOut}
           className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
         >
-          <LogOut />
+          <LogOut className="size-3.5" />
           Sign out
         </DropdownMenuItem>
       ) : supabase ? (
@@ -534,7 +531,7 @@ function WorkspaceMenuContent({
           onSelect={auth.signIn}
           className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.065] focus:text-white"
         >
-          <LogIn />
+          <LogIn className="size-3.5" />
           Sign in with Google
         </DropdownMenuItem>
       ) : null}

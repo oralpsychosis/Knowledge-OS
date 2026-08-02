@@ -6,18 +6,15 @@ import { Breadcrumbs } from "./breadcrumbs";
 import { EditableTitle } from "./editable-title";
 import { HomeDashboard } from "./home-dashboard";
 import { BlockEditor } from "../editor/block-editor";
-// WhiteboardPage is kept as an import but disabled in the render logic to prevent crashes
-// import { WhiteboardPage } from "./whiteboard-page";
 
 export function Canvas() {
-  const { activePage, patchPage, setContent, syncing } = useKnowledge();
+  const { activePage, patchPage, setContent } = useKnowledge();
 
   if (!activePage) {
     return <HomeDashboard />;
   }
 
   // Whiteboard display is strictly disabled to prevent deployment crashes.
-  // The code remains in the project for future restoration.
   if (activePage.kind === "whiteboard") {
     return (
       <div className="flex h-full items-center justify-center bg-[#08080A] p-8 text-center">
@@ -46,7 +43,8 @@ export function Canvas() {
       <PageAvatar
         avatar={activePage.avatarImage}
         icon={activePage.icon}
-        onChange={(v) => patchPage(activePage.id, { avatarImage: v })}
+        onAvatarChange={(v) => patchPage(activePage.id, { avatarImage: v })}
+        onIconChange={(v) => patchPage(activePage.id, { icon: v })}
       />
 
       <div className="mx-auto w-full max-w-3xl px-8 pb-32 pt-6 md:px-16">

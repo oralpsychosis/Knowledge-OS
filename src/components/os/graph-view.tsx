@@ -25,7 +25,6 @@ export interface GraphNode {
 }
 
 export interface GraphEdge {
-  /** Edges should only represent real page → sub-page links. */
   source: string;
   target: string;
 }
@@ -35,15 +34,12 @@ export interface GraphViewProps {
   edges: GraphEdge[];
   onNodeOpen?: (node: GraphNode) => void;
   onNodeSelect?: (node: GraphNode | null) => void;
-  /** Fired when a card is dropped in a new spot, so the position can be persisted. */
+  /** Fired when a card is dropped in a new spot. */
   onNodeMove?: (id: string, pos: { x: number; y: number }) => void;
   selectedId?: string | null;
   className?: string;
-  /** Title shown in the header strip. Set to null to hide the header entirely. */
   title?: ReactNode | null;
-  /** Called when the close (×) button is pressed. Omit to hide the button. */
   onClose?: () => void;
-  /** Show the small control-hints line bottom-left. Default true. */
   showHints?: boolean;
 }
 
@@ -53,10 +49,10 @@ export interface GraphViewProps {
 
 const CARD_WIDTH = 200;
 const CARD_MIN_HEIGHT = 60;
-const GRID_GAP_X = 56;
-const GRID_GAP_Y = 44;
-const GRID_PADDING = 48;
-const MIN_SCALE = 0.25;
+const GRID_GAP_X = 64;
+const GRID_GAP_Y = 48;
+const GRID_PADDING = 60;
+const MIN_SCALE = 0.2;
 const MAX_SCALE = 2.5;
 
 function initialOf(label: string) {
@@ -76,16 +72,15 @@ export default function GraphView({
   onNodeMove,
   selectedId = null,
   className = "",
-  title = "Workspace Graph",
+  title = "Workspace Map",
   onClose,
   showHints = true,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const [tick, setTick] = useState(0);
 
-  const [view, setView] = useState({ x: 0, y: 0, k: 1 });
+  const [view, setView] = useState({ x: 0, y: 0, k: 0.9 });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(selectedId);
   const selected = selectedId !== undefined && selectedId !== null ? selectedId : internalSelectedId;
@@ -102,8 +97,6 @@ export default function GraphView({
   const panRef = useRef<{ pointerId: number; startX: number; startY: number; viewX: number; viewY: number } | null>(
     null
   );
-
-  /* ---------------- seed positions for new nodes --------------------- */
 
   useEffect(() => {
     const map = positionsRef.current;
@@ -129,10 +122,7 @@ export default function GraphView({
       });
     });
     if (seededAny) setTick((t) => t + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes]);
-
-  /* ---------------- zoom / pan --------------------------------------- */
 
   const zoomBy = useCallback((factor: number, pivot?: { x: number; y: number }) => {
     const el = containerRef.current;
@@ -174,11 +164,9 @@ export default function GraphView({
     });
     const w = maxX - minX || 1;
     const h = maxY - minY || 1;
-    const k = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(rect.width / (w + 160), rect.height / (h + 160))));
+    const k = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(rect.width / (w + 120), rect.height / (h + 120))));
     setView({ k, x: rect.width / 2 - (minX + w / 2) * k, y: rect.height / 2 - (minY + h / 2) * k });
   }, []);
-
-  /* ---------------- background pan ------------------------------------ */
 
   const handleBackgroundPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -212,8 +200,6 @@ export default function GraphView({
     },
     [view.k]
   );
-
-  /* ---------------- node interactions -------------------------------- */
 
   const selectNode = useCallback(
     (id: string, open: boolean) => {
@@ -258,8 +244,6 @@ export default function GraphView({
     (e.currentTarget as Element).setPointerCapture(e.pointerId);
   }, []);
 
-  /* ---------------- derived render data -------------------------------- */
-
   const positions = positionsRef.current;
   void tick;
 
@@ -275,13 +259,12 @@ export default function GraphView({
   }, [edges, activeId]);
 
   return (
-    <div className={`relative flex h-full w-full flex-col overflow-hidden bg-[#0B0B0D] ${className}`}>
-      {/* header — real layout space, never overlays the canvas */}
+    <div className={`relative flex h-full w-full flex-col overflow-hidden bg-[#070709] ${className}`}>
       {title !== null && (
-        <div className="flex h-11 flex-none items-center justify-between border-b border-white/[0.06] px-4">
-          <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#8b7cf6]/70" />
-            <span className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+        <div className="flex h-12 flex-none items-center justify-between border-b border-white/[0.05] bg-[#0a0a0c]/50 px-5 backdrop-blur-md">
+          <div className="flex items-center gap-2.5">
+            <div className="h-1.5 w-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.6)]" />
+            <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-white/60">
               {title}
             </span>
           </div>
@@ -289,31 +272,22 @@ export default function GraphView({
             <button
               type="button"
               onClick={onClose}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+              className="flex size-7 items-center justify-center rounded-lg text-white/30 transition-all hover:bg-white/[0.07] hover:text-white"
               aria-label="Close"
             >
-              <X size={13} />
+              <X size={14} />
             </button>
           )}
         </div>
       )}
 
-      {/* canvas */}
       <div className="relative min-h-0 flex-1">
-        {/* quiet ambient light — a single soft source from above, plus fine grain.
-            deliberately not a pair of colorful blurred blobs; that reads as a
-            template default rather than a considered surface. */}
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div
-            className="absolute left-1/2 top-0 h-[520px] w-[900px] -translate-x-1/2"
-            style={{ background: "radial-gradient(ellipse at top, rgba(139,124,246,0.07), transparent 65%)" }}
-          />
-          <svg className="absolute inset-0 h-full w-full opacity-[0.05] mix-blend-overlay">
-            <filter id="grain">
-              <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} stitchTiles="stitch" />
-              <feColorMatrix type="saturate" values="0" />
+        <div className="pointer-events-none absolute inset-0 opacity-[0.03] mix-blend-overlay">
+          <svg className="h-full w-full">
+            <filter id="noise">
+              <feTurbulence type="fractalNoise" baseFrequency="0.6" numOctaves={3} stitchTiles="stitch" />
             </filter>
-            <rect width="100%" height="100%" filter="url(#grain)" />
+            <rect width="100%" height="100%" filter="url(#noise)" />
           </svg>
         </div>
 
@@ -330,7 +304,7 @@ export default function GraphView({
             className="absolute left-0 top-0"
             style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transformOrigin: "0 0" }}
           >
-            {/* edges */}
+            {/* simple straight edges */}
             <svg
               className="absolute overflow-visible"
               style={{ left: 0, top: 0, width: 1, height: 1, pointerEvents: "none" }}
@@ -343,24 +317,20 @@ export default function GraphView({
                 const ay = a.y + CARD_MIN_HEIGHT / 2;
                 const bx = b.x + CARD_WIDTH / 2;
                 const by = b.y + CARD_MIN_HEIGHT / 2;
-                const mx = (ax + bx) / 2;
-                const my = (ay + by) / 2;
                 const isFocused = !!activeId && (e.source === activeId || e.target === activeId);
                 return (
-                  <path
+                  <line
                     key={`${e.source}-${e.target}-${i}`}
-                    d={`M ${ax} ${ay} Q ${mx} ${my} ${bx} ${by}`}
-                    fill="none"
-                    stroke={isFocused ? "#8b7cf6" : "#2b2b30"}
-                    strokeWidth={isFocused ? 1.4 : 1}
-                    strokeOpacity={isFocused ? 0.75 : 0.4}
-                    style={{ transition: "stroke 150ms ease, stroke-opacity 150ms ease" }}
+                    x1={ax} y1={ay} x2={bx} y2={by}
+                    stroke={isFocused ? "rgba(167,139,250,0.8)" : "rgba(255,255,255,0.08)"}
+                    strokeWidth={isFocused ? 1.5 : 1}
+                    style={{ transition: "stroke 150ms ease" }}
                   />
                 );
               })}
             </svg>
 
-            {/* cards */}
+            {/* obsidian pages */}
             {nodes.map((n) => {
               const pos = positions.get(n.id);
               if (!pos) return null;
@@ -371,35 +341,36 @@ export default function GraphView({
               return (
                 <div
                   key={n.id}
-                  className="absolute select-none overflow-hidden rounded-xl border transition-[opacity,border-color,background-color] duration-150"
+                  className="absolute select-none overflow-hidden rounded-xl border transition-all duration-150"
                   style={{
                     left: pos.x,
                     top: pos.y,
                     width: CARD_WIDTH,
                     minHeight: CARD_MIN_HEIGHT,
-                    opacity: isDimmed ? 0.38 : 1,
-                    background: isHovered || isSelected ? "rgba(255,255,255,0.055)" : "rgba(255,255,255,0.03)",
-                    borderColor: isSelected ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.08)",
+                    opacity: isDimmed ? 0.3 : 1,
+                    background: isSelected 
+                      ? "rgba(45, 38, 70, 0.92)" 
+                      : isHovered 
+                        ? "rgba(35, 35, 45, 0.95)" 
+                        : "rgba(24, 24, 28, 0.9)",
+                    borderColor: isSelected 
+                      ? "rgba(167, 139, 250, 0.5)" 
+                      : "rgba(255, 255, 255, 0.08)",
+                    boxShadow: isSelected 
+                      ? "0 0 24px rgba(139, 92, 246, 0.15), inset 0 0 12px rgba(167, 139, 250, 0.05)" 
+                      : "0 4px 12px rgba(0,0,0,0.3)",
                     cursor: "grab",
                   }}
                   onPointerDown={(e) => handleCardPointerDown(e, n.id)}
                   onPointerEnter={() => setHoveredId(n.id)}
                   onPointerLeave={() => setHoveredId((h) => (h === n.id ? null : h))}
                 >
-                  {/* thin top accent instead of a glow bloom — quieter, more precise */}
-                  <div
-                    className="absolute inset-x-0 top-0 h-[2px] transition-opacity duration-150"
-                    style={{
-                      background: "linear-gradient(90deg, #8b7cf6, #6ea8fe)",
-                      opacity: isSelected ? 1 : isHovered ? 0.55 : 0,
-                    }}
-                  />
-                  <div className="flex h-full items-start gap-2.5 px-3.5 py-3">
+                  <div className="flex h-full items-start gap-3 px-4 py-3.5">
                     <span
-                      className="flex h-5 w-5 flex-none items-center justify-center rounded-[5px] font-mono text-[10px] font-semibold"
+                      className="flex h-5 w-5 flex-none items-center justify-center rounded-[5px] font-mono text-[10px] font-bold"
                       style={{
-                        background: "rgba(255,255,255,0.06)",
-                        color: isHovered || isSelected ? "#c9c1fb" : "#71717a",
+                        background: isSelected ? "rgba(167,139,250,0.15)" : "rgba(255,255,255,0.04)",
+                        color: isSelected ? "#c4b5fd" : isHovered ? "#94a3b8" : "#52525b",
                       }}
                     >
                       {initialOf(n.label)}
@@ -408,9 +379,10 @@ export default function GraphView({
                       className="pt-px text-[13px] font-medium leading-snug text-zinc-200"
                       style={{
                         display: "-webkit-box",
-                        WebkitLineClamp: 3,
+                        WebkitLineClamp: 2,
                         WebkitBoxOrient: "vertical",
                         overflow: "hidden",
+                        opacity: isSelected || isHovered ? 1 : 0.85
                       }}
                     >
                       {n.label}
@@ -422,48 +394,38 @@ export default function GraphView({
           </div>
         </div>
 
-        {/* control hints — quiet inline text, no boxed pill */}
         {showHints && (
-          <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-3 font-mono text-[10.5px] text-zinc-600">
-            <span>
-              <span className="text-zinc-500">drag</span> move
-            </span>
-            <span className="text-zinc-700">·</span>
-            <span>
-              <span className="text-zinc-500">scroll</span> zoom
-            </span>
-            <span className="text-zinc-700">·</span>
-            <span>
-              <span className="text-zinc-500">click</span> open
-            </span>
+          <div className="pointer-events-none absolute bottom-4 left-5 flex items-center gap-4 font-mono text-[10px] uppercase tracking-wider text-zinc-600">
+            <span><span className="text-zinc-400">drag</span> pan</span>
+            <span><span className="text-zinc-400">scroll</span> zoom</span>
+            <span><span className="text-zinc-400">click</span> open</span>
           </div>
         )}
 
-        {/* zoom controls */}
-        <div className="absolute bottom-3 right-3 flex flex-col gap-0.5 rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
+        <div className="absolute bottom-4 right-4 flex flex-col gap-1 rounded-xl border border-white/[0.06] bg-black/40 p-1 backdrop-blur-md">
           <button
             type="button"
-            onClick={(e) => zoomBy(1.25, { x: e.clientX, y: e.clientY })}
-            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            onClick={(e) => zoomBy(1.3, { x: e.clientX, y: e.clientY })}
+            className="rounded-lg p-2 text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
             aria-label="Zoom in"
           >
-            <ZoomIn size={14} />
+            <ZoomIn size={15} />
           </button>
           <button
             type="button"
-            onClick={(e) => zoomBy(0.8, { x: e.clientX, y: e.clientY })}
-            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            onClick={(e) => zoomBy(0.7, { x: e.clientX, y: e.clientY })}
+            className="rounded-lg p-2 text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
             aria-label="Zoom out"
           >
-            <ZoomOut size={14} />
+            <ZoomOut size={15} />
           </button>
           <button
             type="button"
             onClick={fitToNodes}
-            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
+            className="rounded-lg p-2 text-zinc-400 transition hover:bg-white/[0.08] hover:text-white"
             aria-label="Fit to view"
           >
-            <Maximize2 size={14} />
+            <Maximize2 size={15} />
           </button>
         </div>
       </div>

@@ -1,7 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { KnowledgeOSState } from "./types";
 
-// Vercel might inject these as strings or undefined. We ensure they are valid URLs.
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
@@ -10,21 +9,28 @@ const canInitialize = Boolean(
   key && 
   typeof url === "string" && 
   url.startsWith("http") &&
-  !url.includes("YOUR_SUPABASE_URL") // Block common placeholder strings
+  !url.includes("YOUR_SUPABASE_URL")
 );
 
-if (!canInitialize && typeof window !== "undefined") {
-  console.warn("Supabase is not configured. Falling back to local-only mode.");
-}
+// Critical fix: prevent Supabase from attempting to access localStorage on the server
+const isServer = typeof window === "undefined";
 
-export const supabase = canInitialize ? createClient(url!, key!) : null;
+export const supabase = canInitialize 
+  ? createClient(url!, key!, {
+      auth: {
+        persistSession: !isServer, // Only persist on client
+        autoRefreshToken: !isServer,
+        detectSessionInUrl: !isServer,
+      }
+    }) 
+  : null;
 
 /* ------------------------------------------------------------------ */
 /*  Auth helpers                                                       */
 /* ------------------------------------------------------------------ */
 
 export async function signInWithGoogle() {
-  if (!supabase || typeof window === "undefined") return;
+  if (!supabase || isServer) return;
   
   try {
     const { error } = await supabase.auth.signInWithOAuth({
@@ -58,17 +64,18 @@ export function onAuthChange(cb: (user: import("@supabase/supabase-js").User | n
     return () => {};
   }
   
+  // Setup listener
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
     cb(session?.user ?? null);
   });
   
-  // Check current session immediately
+  // Check current session immediately (async but safe)
   supabase.auth.getSession()
     .then(({ data: { session } }) => {
       cb(session?.user ?? null);
     })
     .catch((err) => {
-      console.error("Session check failed:", err);
+      console.warn("Supabase session check failed:", err.message);
       cb(null);
     });
   
@@ -91,7 +98,6 @@ export async function fetchRemoteState(userId: string): Promise<KnowledgeOSState
       .maybeSingle();
     
     if (error) {
-      // 404 or table missing is handled gracefully
       console.warn("Remote state fetch note:", error.message);
       return null;
     }
@@ -115,13 +121,12 @@ export async function upsertRemoteState(userId: string, state: KnowledgeOSState)
     );
     if (error) throw error;
   } catch (err) {
-    // We log but don't re-throw to prevent breaking the local UI loop
     console.error("Remote sync failed:", err);
   }
 }
 
 export function subscribeToRemoteChanges(userId: string, onUpdate: (state: KnowledgeOSState) => void) {
-  if (!supabase) return () => {};
+  if (!supabase || isServer) return () => {};
   
   try {
     const channel = supabase

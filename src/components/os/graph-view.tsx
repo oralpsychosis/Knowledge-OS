@@ -8,7 +8,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { Maximize2, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
 /*  Public types                                                       */
@@ -39,8 +39,6 @@ export interface GraphViewProps {
   className?: string;
   /** Title shown in the header strip. Set to null to hide the header entirely. */
   title?: ReactNode | null;
-  /** Called when the close (×) button is pressed. Omit to hide the button. */
-  onClose?: () => void;
   /** Show the small control-hints line bottom-left. Default true. */
   showHints?: boolean;
 }
@@ -97,7 +95,6 @@ export default function GraphView({
   selectedId = null,
   className = "",
   title = "Workspace Graph",
-  onClose,
   showHints = true,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -308,16 +305,7 @@ export default function GraphView({
               {title}
             </span>
           </div>
-          {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-6 w-6 items-center justify-center rounded-md text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
-              aria-label="Close"
-            >
-              <X size={13} />
-            </button>
-          )}
+          {/* Internal close button removed to fix double X issue */}
         </div>
       )}
 
@@ -401,7 +389,7 @@ export default function GraphView({
                     minHeight: CARD_MIN_HEIGHT,
                     opacity: isDimmed ? 0.38 : 1,
                     background: isHovered || isSelected || isDragging ? "#1B1B20" : "#151519",
-                    borderColor: isSelected || isDragging ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.09)",
+                    borderColor: isSelected || isDragging ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.08)",
                     cursor: isDragging ? "grabbing" : "grab",
                     zIndex: isDragging ? 30 : isSelected ? 2 : 1,
                     transform: isDragging ? "scale(1.035) translateY(-1px)" : "scale(1)",

@@ -17,3 +17,4 @@
 - 2026-08-02T13:45:00+00:00 | tooling | Hardened Supabase, Auth, and Storage initialization for SSR resilience and added Netlify SPA routing support | validation: code review of initialization safety guards and public asset check
 - 2026-08-02T14:10:00+00:00 | testing | Temporarily stubbed Excalidraw and React Flow/Dagre components to test production deployment stability | validation: verification of clean bundle without canvas/graph dependencies
 - 2026-08-02T15:00:00+00:00 | testing | Temporarily bypassed Excalidraw and React Flow imports to diagnose page load stability | validation: manual verification of diagnostic placeholder
+- 2026-08-02T15:45:00+00:00 | graph | Re-enabled React Flow Graph Map with client-side lazy loading while keeping Excalidraw whiteboard disabled | validation: manual verification of graph modal rendering and preview stability

@@ -1,5 +1,8 @@
+import { useEffect, useState, lazy, Suspense } from "react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Waypoints } from "lucide-react";
+import { Loader2 } from "lucide-react";
+
+const GraphCanvas = lazy(() => import("./graph-canvas"));
 
 interface GraphModalProps {
   open: boolean;
@@ -7,17 +10,29 @@ interface GraphModalProps {
 }
 
 export function GraphModal({ open, onOpenChange }: GraphModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl border-white/10 bg-[#0a0a0f] p-8 text-center text-white shadow-2xl">
-        <DialogTitle className="sr-only">Workspace Map Diagnostic</DialogTitle>
-        <div className="mx-auto flex size-12 items-center justify-center rounded-2xl border border-violet-400/30 bg-violet-500/15">
-          <Waypoints className="size-6 text-violet-300" />
-        </div>
-        <h3 className="mt-4 text-lg font-semibold text-white/90">Workspace Map</h3>
-        <p className="mt-2 text-xs text-white/45">
-          Testing diagnostic mode: React Flow is disabled to verify workspace stability.
-        </p>
+      <DialogContent className="max-w-4xl border-white/10 bg-[#0a0a0f] p-4 text-white shadow-2xl">
+        <DialogTitle className="sr-only">Workspace Map</DialogTitle>
+        {mounted && open ? (
+          <Suspense
+            fallback={
+              <div className="flex h-[80vh] w-full items-center justify-center rounded-2xl bg-[#08080c]">
+                <Loader2 className="size-8 animate-spin text-violet-400" />
+              </div>
+            }
+          >
+            <GraphCanvas onClose={() => onOpenChange(false)} />
+          </Suspense>
+        ) : (
+          <div className="h-[80vh] w-full" />
+        )}
       </DialogContent>
     </Dialog>
   );

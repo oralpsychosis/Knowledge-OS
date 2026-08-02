@@ -153,6 +153,13 @@ This is whole-document, last-writer-oriented synchronization. It has no field-le
 - `src/server.ts` wraps the generated server entry and converts catastrophic/swallowed h3 JSON failures into a stable HTML error page.
 - `src/lib/error-capture.ts` preserves useful error/cause information that h3 may otherwise flatten.
 - `src/routes/__root.tsx` provides the React error boundary and forwards preview errors to Lovable telemetry.
+- React Flow and Excalidraw are optional client-only module graphs. The sidebar lazily imports the
+  graph only after the Map action, while `whiteboard-page.tsx` waits for hydration and asset-path
+  setup before importing the editor. Do not replace these boundaries with static imports plus
+  render-time `window` checks: server bundling can evaluate a browser-only transitive chunk before a
+  guarded component renders.
+- After a production build, `npm.cmd run smoke:ssr` invokes the generated Nitro fetch handler and
+  requires `/` to return the Knowledge OS HTML shell with status 200.
 
 There are currently no application server functions. If sensitive operations are added, implement them server-side and keep secrets out of the Vite client environment.
 

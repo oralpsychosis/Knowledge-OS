@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
+import { ClientOnly } from "@tanstack/react-router";
 import { LoaderCircle, PenLine } from "lucide-react";
 import type { KnowledgePage, WhiteboardScene } from "@/lib/types";
 
@@ -27,20 +28,28 @@ function WhiteboardLoading() {
   );
 }
 
-export function WhiteboardPage(props: WhiteboardPageProps) {
-  const [mounted, setMounted] = useState(false);
+function WhiteboardClient(props: WhiteboardPageProps) {
+  const [assetsReady, setAssetsReady] = useState(false);
 
   useEffect(() => {
     const browserWindow = window as Window & { EXCALIDRAW_ASSET_PATH?: string };
     browserWindow.EXCALIDRAW_ASSET_PATH = "/excalidraw-assets/";
-    setMounted(true);
+    setAssetsReady(true);
   }, []);
 
-  if (!mounted) return <WhiteboardLoading />;
+  if (!assetsReady) return <WhiteboardLoading />;
 
   return (
     <Suspense fallback={<WhiteboardLoading />}>
       <WhiteboardEditor {...props} />
     </Suspense>
+  );
+}
+
+export function WhiteboardPage(props: WhiteboardPageProps) {
+  return (
+    <ClientOnly fallback={<WhiteboardLoading />}>
+      <WhiteboardClient {...props} />
+    </ClientOnly>
   );
 }

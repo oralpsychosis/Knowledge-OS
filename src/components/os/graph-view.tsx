@@ -9,6 +9,7 @@ import {
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import dagre from "@dagrejs/dagre";
 
 /* ------------------------------------------------------------------ */
 /*  Public types                                                       */
@@ -19,13 +20,11 @@ export interface GraphNode {
   label: string;
   avatarImage?: string;
   icon?: string;
-  /** Optional starting position (world space). Auto-arranged in a grid if omitted. */
   x?: number;
   y?: number;
 }
 
 export interface GraphEdge {
-  /** Edges should only represent real page → sub-page links. */
   source: string;
   target: string;
 }
@@ -35,13 +34,10 @@ export interface GraphViewProps {
   edges: GraphEdge[];
   onNodeOpen?: (node: GraphNode) => void;
   onNodeSelect?: (node: GraphNode | null) => void;
-  /** Fired when a card is dropped in a new spot, so the position can be persisted. */
   onNodeMove?: (id: string, pos: { x: number; y: number }) => void;
   selectedId?: string | null;
   className?: string;
-  /** Title shown in the header strip. Set to null to hide the header entirely. */
   title?: ReactNode | null;
-  /** Show the small control-hints line bottom-left. Default true. */
   showHints?: boolean;
 }
 
@@ -51,10 +47,9 @@ export interface GraphViewProps {
 
 const CARD_WIDTH = 200;
 const CARD_MIN_HEIGHT = 60;
-const GRID_GAP_X = 56;
-const GRID_GAP_Y = 44;
-const GRID_PADDING = 48;
-const MIN_SCALE = 0.25;
+const NODE_SEP = 80;
+const RANK_SEP = 120;
+const MIN_SCALE = 0.15;
 const MAX_SCALE = 2.5;
 
 function initialOf(label: string) {
@@ -63,9 +58,7 @@ function initialOf(label: string) {
 }
 
 /** Where a ray from a rectangle's center toward (towardX, towardY) exits the
- *  rectangle's boundary — so a line lands on the bottom edge when the other
- *  card is below it, the side edge when it's beside it, etc., instead of
- *  cutting through the middle of the box. */
+ *  rectangle's boundary. */
 function anchorOnRect(
   rect: { x: number; y: number; w: number; h: number },
   towardX: number,
@@ -96,15 +89,14 @@ export default function GraphView({
   onNodeMove,
   selectedId = null,
   className = "",
-  title = "Workspace Graph",
+  title = "Workspace Map",
   showHints = true,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-
   const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const [tick, setTick] = useState(0);
 
-  const [view, setView] = useState({ x: 0, y: 0, k: 1 });
+  const [view, setView] = useState({ x: 0, y: 0, k: 0.8 });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(selectedId);
@@ -123,7 +115,7 @@ export default function GraphView({
     null
   );
 
-  /* ---------------- seed positions for new nodes --------------------- */
+  /* ---------------- hierarchical layout (Dagre) --------------------- */
 
   useEffect(() => {
     const map = positionsRef.current;
@@ -132,25 +124,44 @@ export default function GraphView({
       if (!existingIds.has(id)) map.delete(id);
     }
 
-    const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
-    let seededAny = false;
-    nodes.forEach((n, i) => {
-      if (map.has(n.id)) return;
-      seededAny = true;
-      if (n.x !== undefined && n.y !== undefined) {
-        map.set(n.id, { x: n.x, y: n.y });
-        return;
-      }
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      map.set(n.id, {
-        x: GRID_PADDING + col * (CARD_WIDTH + GRID_GAP_X),
-        y: GRID_PADDING + row * (CARD_MIN_HEIGHT + GRID_GAP_Y),
+    // Check if we have nodes that need initial positioning
+    const needsLayout = nodes.some((n) => !map.has(n.id) && n.x === undefined);
+
+    if (needsLayout) {
+      const g = new dagre.graphlib.Graph();
+      g.setGraph({ rankdir: "TB", nodesep: NODE_SEP, ranksep: RANK_SEP });
+      g.setDefaultEdgeLabel(() => ({}));
+
+      nodes.forEach((n) => {
+        g.setNode(n.id, { width: CARD_WIDTH, height: CARD_MIN_HEIGHT });
       });
-    });
-    if (seededAny) setTick((t) => t + 1);
+
+      edges.forEach((e) => {
+        g.setEdge(e.source, e.target);
+      });
+
+      dagre.layout(g);
+
+      nodes.forEach((n) => {
+        // Use persisted pos if it exists, otherwise use dagre's result
+        if (n.x !== undefined && n.y !== undefined) {
+          map.set(n.id, { x: n.x, y: n.y });
+        } else {
+          const dagreNode = g.node(n.id);
+          map.set(n.id, { x: dagreNode.x - CARD_WIDTH / 2, y: dagreNode.y - CARD_MIN_HEIGHT / 2 });
+        }
+      });
+      setTick((t) => t + 1);
+    } else {
+      // Just ensure nodes that are already in the map or have props are set correctly
+      nodes.forEach((n) => {
+        if (!map.has(n.id) && n.x !== undefined && n.y !== undefined) {
+          map.set(n.id, { x: n.x, y: n.y });
+        }
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes]);
+  }, [nodes, edges]);
 
   /* ---------------- zoom / pan --------------------------------------- */
 
@@ -194,7 +205,7 @@ export default function GraphView({
     });
     const w = maxX - minX || 1;
     const h = maxY - minY || 1;
-    const k = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(rect.width / (w + 160), rect.height / (h + 160))));
+    const k = Math.min(MAX_SCALE, Math.max(MIN_SCALE, Math.min(rect.width / (w + 120), rect.height / (h + 120))));
     setView({ k, x: rect.width / 2 - (minX + w / 2) * k, y: rect.height / 2 - (minY + h / 2) * k });
   }, []);
 
@@ -298,7 +309,6 @@ export default function GraphView({
 
   return (
     <div className={`relative flex h-full w-full flex-col overflow-hidden bg-[#0B0B0D] ${className}`}>
-      {/* header — real layout space, never overlays the canvas */}
       {title !== null && (
         <div className="flex h-11 flex-none items-center justify-between border-b border-white/[0.06] px-4">
           <div className="flex items-center gap-2">
@@ -307,24 +317,15 @@ export default function GraphView({
               {title}
             </span>
           </div>
-          {/* Internal close button removed to fix double X issue */}
         </div>
       )}
 
-      {/* canvas */}
       <div className="relative min-h-0 flex-1">
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <div
             className="absolute left-1/2 top-0 h-[520px] w-[900px] -translate-x-1/2"
             style={{ background: "radial-gradient(ellipse at top, rgba(139,124,246,0.07), transparent 65%)" }}
           />
-          <svg className="absolute inset-0 h-full w-full opacity-[0.05] mix-blend-overlay">
-            <filter id="grain">
-              <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves={2} stitchTiles="stitch" />
-              <feColorMatrix type="saturate" values="0" />
-            </filter>
-            <rect width="100%" height="100%" filter="url(#grain)" />
-          </svg>
         </div>
 
         <div
@@ -340,32 +341,46 @@ export default function GraphView({
             className="absolute left-0 top-0"
             style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transformOrigin: "0 0" }}
           >
-            {/* edges */}
+            {/* schematic connectors */}
             <svg
               className="absolute overflow-visible"
               style={{ left: 0, top: 0, width: 1, height: 1, pointerEvents: "none" }}
             >
+              <defs>
+                <marker
+                  id="arrowhead"
+                  markerWidth="8"
+                  markerHeight="6"
+                  refX="7"
+                  refY="3"
+                  orient="auto"
+                >
+                  <polygon points="0 0, 8 3, 0 6" fill="rgba(139,124,246,0.3)" />
+                </marker>
+              </defs>
               {edges.map((e, i) => {
                 const a = positions.get(e.source);
                 const b = positions.get(e.target);
                 if (!a || !b) return null;
-                const rectA = { x: a.x, y: a.y, w: CARD_WIDTH, h: CARD_MIN_HEIGHT };
-                const rectB = { x: b.x, y: b.y, w: CARD_WIDTH, h: CARD_MIN_HEIGHT };
-                const centerA = { x: a.x + CARD_WIDTH / 2, y: a.y + CARD_MIN_HEIGHT / 2 };
-                const centerB = { x: b.x + CARD_WIDTH / 2, y: b.y + CARD_MIN_HEIGHT / 2 };
-                const start = anchorOnRect(rectA, centerB.x, centerB.y);
-                const end = anchorOnRect(rectB, centerA.x, centerA.y);
+
+                const start = { x: a.x + CARD_WIDTH / 2, y: a.y + CARD_MIN_HEIGHT };
+                const end = { x: b.x + CARD_WIDTH / 2, y: b.y };
+                const midY = (start.y + end.y) / 2;
+                
                 const isFocused = !!activeId && (e.source === activeId || e.target === activeId);
+                
+                // Arced cubic bezier for a sleek "mother -> child" flow
+                const path = `M ${start.x} ${start.y} C ${start.x} ${midY}, ${end.x} ${midY}, ${end.x} ${end.y}`;
+
                 return (
-                  <line
+                  <path
                     key={`${e.source}-${e.target}-${i}`}
-                    x1={start.x}
-                    y1={start.y}
-                    x2={end.x}
-                    y2={end.y}
-                    stroke={isFocused ? "rgba(161,155,224,0.5)" : "rgba(255,255,255,0.12)"}
-                    strokeWidth={1}
-                    style={{ transition: "stroke 150ms ease" }}
+                    d={path}
+                    fill="none"
+                    stroke={isFocused ? "#a19be0" : "rgba(255,255,255,0.08)"}
+                    strokeWidth={isFocused ? 2 : 1.5}
+                    markerEnd={isFocused ? "url(#arrowhead)" : undefined}
+                    style={{ transition: "stroke 200ms ease, stroke-width 200ms ease" }}
                   />
                 );
               })}
@@ -389,56 +404,47 @@ export default function GraphView({
                     top: pos.y,
                     width: CARD_WIDTH,
                     minHeight: CARD_MIN_HEIGHT,
-                    opacity: isDimmed ? 0.38 : 1,
-                    background: isHovered || isSelected || isDragging ? "#1B1B20" : "#151519",
-                    borderColor: isSelected || isDragging ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.09)",
+                    opacity: isDimmed ? 0.3 : 1,
+                    background: isHovered || isSelected || isDragging ? "#1B1B20" : "#121216",
+                    borderColor: isSelected || isDragging ? "rgba(139,124,246,0.6)" : "rgba(255,255,255,0.1)",
                     cursor: isDragging ? "grabbing" : "grab",
                     zIndex: isDragging ? 30 : isSelected ? 2 : 1,
-                    transform: isDragging ? "scale(1.035) translateY(-1px)" : "scale(1)",
+                    transform: isDragging ? "scale(1.02)" : "scale(1)",
                     boxShadow: isDragging
-                      ? "0 16px 36px -12px rgba(0,0,0,0.55), 0 0 0 1px rgba(139,124,246,0.25)"
-                      : "none",
+                      ? "0 20px 40px -10px rgba(0,0,0,0.6)"
+                      : "0 4px 12px rgba(0,0,0,0.2)",
                     transition: isDragging
                       ? "none"
-                      : "opacity 150ms ease, border-color 150ms ease, background-color 150ms ease, transform 150ms ease, box-shadow 150ms ease",
+                      : "opacity 200ms ease, border-color 200ms ease, background-color 200ms ease, transform 200ms ease",
                   }}
                   onPointerDown={(e) => handleCardPointerDown(e, n.id)}
                   onPointerEnter={() => setHoveredId(n.id)}
                   onPointerLeave={() => setHoveredId((h) => (h === n.id ? null : h))}
                 >
-                  {/* thin top accent instead of a glow bloom — quieter, more precise */}
                   <div
-                    className="absolute inset-x-0 top-0 h-[2px] transition-opacity duration-150"
+                    className="absolute inset-x-0 top-0 h-[2px] opacity-0 transition-opacity duration-200"
                     style={{
                       background: "linear-gradient(90deg, #8b7cf6, #6ea8fe)",
-                      opacity: isSelected || isDragging ? 1 : isHovered ? 0.55 : 0,
+                      opacity: isSelected || isDragging || isHovered ? 1 : 0,
                     }}
                   />
-                  <div className="flex h-full items-start gap-2.5 px-3.5 py-3">
+                  <div className="flex h-full items-center gap-3 px-3.5 py-3">
                     <span
-                      className="flex h-5 w-5 flex-none items-center justify-center rounded-[5px] font-mono text-[10px] font-semibold overflow-hidden"
+                      className="flex h-6 w-6 flex-none items-center justify-center rounded-[6px] font-mono text-[11px] font-bold overflow-hidden"
                       style={{
-                        background: "rgba(255,255,255,0.06)",
+                        background: "rgba(255,255,255,0.05)",
                         color: isHovered || isSelected || isDragging ? "#c9c1fb" : "#71717a",
                       }}
                     >
                       {n.avatarImage ? (
                         <img src={n.avatarImage} alt="" className="h-full w-full object-cover" />
                       ) : n.icon ? (
-                        <span>{n.icon}</span>
+                        <span className="text-[14px]">{n.icon}</span>
                       ) : (
                         <span>{initialOf(n.label)}</span>
                       )}
                     </span>
-                    <span
-                      className="pt-px text-[13px] font-medium leading-snug text-zinc-200"
-                      style={{
-                        display: "-webkit-box",
-                        WebkitLineClamp: 3,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                      }}
-                    >
+                    <span className="min-w-0 truncate text-[13px] font-medium text-zinc-200">
                       {n.label}
                     </span>
                   </div>
@@ -448,46 +454,35 @@ export default function GraphView({
           </div>
         </div>
 
-        {/* control hints — quiet inline text, no boxed pill */}
         {showHints && (
-          <div className="pointer-events-none absolute bottom-3 left-4 flex items-center gap-3 font-mono text-[10.5px] text-zinc-600">
-            <span>
-              <span className="text-zinc-500">drag</span> move
-            </span>
-            <span className="text-zinc-700">·</span>
-            <span>
-              <span className="text-zinc-500">scroll</span> zoom
-            </span>
-            <span className="text-zinc-700">·</span>
-            <span>
-              <span className="text-zinc-500">click</span> open
-            </span>
+          <div className="pointer-events-none absolute bottom-4 left-4 flex items-center gap-4 font-mono text-[10px] text-zinc-600">
+            <span>DRAG MOVE</span>
+            <span className="text-zinc-800">·</span>
+            <span>SCROLL ZOOM</span>
+            <span className="text-zinc-800">·</span>
+            <span>CLICK OPEN</span>
           </div>
         )}
 
-        {/* zoom controls */}
-        <div className="absolute bottom-3 right-3 flex flex-col gap-0.5 rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
+        <div className="absolute bottom-4 right-4 flex flex-col gap-1 rounded-xl border border-white/[0.08] bg-[#121216]/80 p-1 backdrop-blur-md">
           <button
             type="button"
-            onClick={(e) => zoomBy(1.25, { x: e.clientX, y: e.clientY })}
-            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
-            aria-label="Zoom in"
+            onClick={(e) => zoomBy(1.2, { x: e.clientX, y: e.clientY })}
+            className="flex size-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
           >
             <ZoomIn size={14} />
           </button>
           <button
             type="button"
             onClick={(e) => zoomBy(0.8, { x: e.clientX, y: e.clientY })}
-            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
-            aria-label="Zoom out"
+            className="flex size-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
           >
             <ZoomOut size={14} />
           </button>
           <button
             type="button"
             onClick={fitToNodes}
-            className="rounded-md p-1.5 text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
-            aria-label="Fit to view"
+            className="flex size-8 items-center justify-center rounded-lg text-zinc-500 transition hover:bg-white/[0.06] hover:text-zinc-200"
           >
             <Maximize2 size={14} />
           </button>

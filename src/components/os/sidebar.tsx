@@ -12,6 +12,7 @@ import {
   LogIn,
   LogOut,
   PanelLeftClose,
+  PenLine,
   Plus,
   Search,
   Waypoints,
@@ -58,7 +59,7 @@ export function Sidebar({
   onMobileClose,
   onMobileToolClose,
 }: SidebarProps) {
-  const { addPage, select, state, syncing } = useKnowledge();
+  const { addPage, addWhiteboard, select, state, syncing } = useKnowledge();
   const auth = useAuth();
   const [activeTool, setActiveTool] = useState<SidebarTool>(null);
   const mobileCloseRef = useRef<HTMLButtonElement>(null);
@@ -90,13 +91,10 @@ export function Sidebar({
     finishNavigation();
   }
 
-  // Whiteboard creation is disabled
-  /*
   function createWhiteboard() {
     addWhiteboard(null);
     finishNavigation();
   }
-  */
 
   function openTool(tool: Exclude<SidebarTool, null>) {
     setActiveTool(tool);
@@ -236,7 +234,12 @@ export function Sidebar({
                       description="Start writing immediately"
                       onSelect={createDocument}
                     />
-                    {/* Whiteboard menu item is disabled */}
+                    <CreationMenuItem
+                      icon={<PenLine className="size-3.5" />}
+                      label="Whiteboard"
+                      description="Sketch ideas freely"
+                      onSelect={createWhiteboard}
+                    />
                     <DropdownMenuSeparator className="bg-white/[0.07]" />
                     <CreationMenuItem
                       icon={<LayoutTemplate className="size-3.5" />}

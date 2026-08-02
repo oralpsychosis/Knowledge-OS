@@ -63,8 +63,8 @@ The workspace is saved locally on every state change. A signed-in user also gets
   collapsed, and a dismissible drawer on small screens.
 - ADHD brain dump, project canvas, and sprint templates.
 - A calm, map-like knowledge graph for exploring page hierarchy in overview or local focus.
-- First-class whiteboard pages for freehand thinking, shapes, arrows, text, frames, and
-  Excalidraw/PNG/SVG exchange without leaving the workspace hierarchy.
+- First-class whiteboard pages for freehand thinking with pen drawing, erasing, color
+  selection, clearing, autosave, and hierarchy navigation without leaving the workspace.
 - A compact soundscape transport with an inline, scroll-contained mixer, per-layer volume, and
   persistent local mix preferences.
 - Google sign-in, cloud state sync, and a sync indicator when Supabase is configured.

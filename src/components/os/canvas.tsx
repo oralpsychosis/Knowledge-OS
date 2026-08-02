@@ -6,6 +6,10 @@ import { Breadcrumbs } from "./breadcrumbs";
 import { EditableTitle } from "./editable-title";
 import { HomeDashboard } from "./home-dashboard";
 import { BlockEditor } from "../editor/block-editor";
+import { WhiteboardPage } from "./whiteboard-page";
+
+export function Canvas() {
+  const { activePage, patchPage, setContent, setWhiteboard, syncing } = useKnowledge();
 
 export function Canvas() {
   const { activePage, patchPage, setContent } = useKnowledge();
@@ -17,14 +21,13 @@ export function Canvas() {
   // Whiteboard display is strictly disabled to prevent deployment crashes.
   if (activePage.kind === "whiteboard") {
     return (
-      <div className="flex h-full items-center justify-center bg-[#08080A] p-8 text-center">
-        <div className="max-w-md">
-          <h2 className="text-xl font-semibold text-white/90">Whiteboards are temporarily disabled</h2>
-          <p className="mt-2 text-sm text-white/40">
-            This page type is currently unavailable. You can still access your other documents from the sidebar.
-          </p>
-        </div>
-      </div>
+      <WhiteboardPage
+        key={activePage.id}
+        page={activePage}
+        syncing={syncing}
+        onTitleChange={(title) => patchPage(activePage.id, { title })}
+        onSceneChange={(whiteboard) => setWhiteboard(activePage.id, whiteboard)}
+      />
     );
   }
 

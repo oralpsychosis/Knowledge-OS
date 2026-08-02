@@ -39,19 +39,10 @@ interface KnowledgePage {
   content: JSONContent;
   whiteboard?: {
     version: 1;
-    elements: readonly ExcalidrawElement[];
-    appState: Partial<
-      Pick<
-        AppState,
-        | "gridModeEnabled"
-        | "gridSize"
-        | "gridStep"
-        | "scrollX"
-        | "scrollY"
-        | "viewBackgroundColor"
-        | "zoom"
-      >
-    >;
+    elements: readonly WhiteboardStroke[];
+    appState?: {
+      viewBackgroundColor?: string;
+    };
   };
   createdAt: number;
   updatedAt: number;
@@ -69,9 +60,9 @@ as one document. Existing pages can omit `kind` and are treated as documents. Wh
 records have their own version marker, but there is still no workspace-level schema version or
 migration function.
 
-Whiteboard persistence intentionally contains no Excalidraw `BinaryFiles`. The image tool, pasted
-images, embeds, and imports containing image/embed elements are blocked so a board cannot silently
-inflate the full workspace JSON with file data.
+Whiteboard persistence intentionally contains only compact native canvas strokes and view metadata.
+The drawing surface has no image/embed import path, so a board cannot silently inflate the full
+workspace JSON with file data.
 
 ## Local persistence
 
@@ -86,7 +77,7 @@ inflate the full workspace JSON with file data.
 | Save timing     | 400 ms debounce after store changes                                                           |
 | Load order      | IndexedDB first, then legacy/backup localStorage                                              |
 | Migration       | A valid localStorage record is copied into IndexedDB                                          |
-| Images          | Document image content and cover/avatar uploads use data URLs; whiteboards reject image files |
+| Images          | Document image content and cover/avatar uploads use data URLs; native canvas whiteboards do not accept image files |
 
 IndexedDB operations deliberately fail soft for blocked/private environments. localStorage quota failures also fail soft because IndexedDB remains primary.
 

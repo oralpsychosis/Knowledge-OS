@@ -6,28 +6,24 @@ import { Breadcrumbs } from "./breadcrumbs";
 import { EditableTitle } from "./editable-title";
 import { HomeDashboard } from "./home-dashboard";
 import { BlockEditor } from "../editor/block-editor";
-// WhiteboardPage is kept as an import but disabled in the render logic to prevent crashes
-// import { WhiteboardPage } from "./whiteboard-page";
+import { WhiteboardPage } from "./whiteboard-page";
 
 export function Canvas() {
-  const { activePage, patchPage, setContent, syncing } = useKnowledge();
+  const { activePage, patchPage, setContent, setWhiteboard, syncing } = useKnowledge();
 
   if (!activePage) {
     return <HomeDashboard />;
   }
 
-  // Whiteboard display is strictly disabled to prevent deployment crashes.
-  // The code remains in the project for future restoration.
   if (activePage.kind === "whiteboard") {
     return (
-      <div className="flex h-full items-center justify-center bg-[#08080A] p-8 text-center">
-        <div className="max-w-md">
-          <h2 className="text-xl font-semibold text-white/90">Whiteboards are temporarily disabled</h2>
-          <p className="mt-2 text-sm text-white/40">
-            This page type is currently unavailable. You can still access your other documents from the sidebar.
-          </p>
-        </div>
-      </div>
+      <WhiteboardPage
+        key={activePage.id}
+        page={activePage}
+        syncing={syncing}
+        onTitleChange={(title) => patchPage(activePage.id, { title })}
+        onSceneChange={(whiteboard) => setWhiteboard(activePage.id, whiteboard)}
+      />
     );
   }
 

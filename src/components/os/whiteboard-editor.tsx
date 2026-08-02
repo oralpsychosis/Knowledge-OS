@@ -1,40 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  CaptureUpdateAction,
-  Excalidraw,
-  WelcomeScreen,
-  exportToBlob,
-  exportToSvg,
-  getSceneVersion,
-  loadFromBlob,
-  serializeAsJSON,
-} from "@excalidraw/excalidraw";
-import "@excalidraw/excalidraw/index.css";
-import "./whiteboard.css";
-import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types";
-import type { AppState, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
-import {
-  Check,
-  ChevronDown,
-  CloudUpload,
-  Download,
-  FileJson,
-  ImageDown,
-  LoaderCircle,
-  PenLine,
-  Scan,
-  Shapes,
-  Upload,
-} from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Check, CloudUpload, Eraser, LoaderCircle, PenLine, RotateCcw, Trash2 } from "lucide-react";
 import { Breadcrumbs } from "./breadcrumbs";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import type { KnowledgePage, WhiteboardAppState, WhiteboardScene } from "@/lib/types";
+import type { KnowledgePage, WhiteboardScene, WhiteboardStroke } from "@/lib/types";
 
 interface WhiteboardEditorProps {
   page: KnowledgePage;
@@ -43,63 +10,77 @@ interface WhiteboardEditorProps {
   onSceneChange: (scene: WhiteboardScene) => void;
 }
 
+type Tool = "pen" | "eraser";
 type SaveState = "saved" | "pending";
 
-const NO_FILES = {};
-const SAVE_DELAY_MS = 650;
+type DrawingPoint = { x: number; y: number };
 
-function compactAppState(appState: AppState): WhiteboardAppState {
-  return {
-    gridModeEnabled: appState.gridModeEnabled,
-    gridSize: appState.gridSize,
-    gridStep: appState.gridStep,
-    scrollX: appState.scrollX,
-    scrollY: appState.scrollY,
-    viewBackgroundColor: appState.viewBackgroundColor,
-    zoom: appState.zoom,
-  };
-}
+const COLORS = ["#c4b5fd", "#ffffff", "#67e8f9", "#86efac", "#fde68a", "#fda4af"];
+const SAVE_DELAY_MS = 450;
+const PEN_SIZE = 3;
+const ERASER_SIZE = 22;
 
-function sceneSignature(scene: WhiteboardScene): string {
-  const { appState } = scene;
-  return [
-    getSceneVersion(scene.elements),
-    appState.gridModeEnabled ? 1 : 0,
-    appState.gridSize ?? "",
-    appState.gridStep ?? "",
-    appState.scrollX ?? 0,
-    appState.scrollY ?? 0,
-    appState.viewBackgroundColor ?? "",
-    appState.zoom?.value ?? 1,
-  ].join(":");
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.style.display = "none";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function safeFilename(title: string) {
-  const cleaned = title
-    .trim()
-    .replace(/[<>:"/\\|?*]/g, "-")
-    .replace(/\s+/g, " ")
-    .slice(0, 80);
-  return cleaned || "knowledge-os-whiteboard";
-}
-
-function hasUnsupportedElements(elements: readonly ExcalidrawElement[]) {
-  return elements.some(
-    (element) =>
-      element.type === "image" || element.type === "embeddable" || element.type === "iframe",
+function isStroke(element: unknown): element is WhiteboardStroke {
+  if (!element || typeof element !== "object") return false;
+  const maybe = element as Partial<WhiteboardStroke>;
+  return (
+    maybe.type === "stroke" &&
+    (maybe.tool === "pen" || maybe.tool === "eraser") &&
+    typeof maybe.color === "string" &&
+    typeof maybe.size === "number" &&
+    Array.isArray(maybe.points)
   );
+}
+
+function getInitialStrokes(scene: WhiteboardScene | undefined): WhiteboardStroke[] {
+  if (!scene) return [];
+  return scene.elements.filter(isStroke);
+}
+
+function drawStroke(ctx: CanvasRenderingContext2D, stroke: WhiteboardStroke) {
+  if (stroke.points.length === 0) return;
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = stroke.size;
+  ctx.globalCompositeOperation = stroke.tool === "eraser" ? "destination-out" : "source-over";
+  ctx.strokeStyle = stroke.color;
+
+  ctx.beginPath();
+  ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+
+  if (stroke.points.length === 1) {
+    ctx.lineTo(stroke.points[0].x + 0.1, stroke.points[0].y + 0.1);
+  } else {
+    for (let index = 1; index < stroke.points.length; index += 1) {
+      const current = stroke.points[index];
+      const previous = stroke.points[index - 1];
+      const midPoint = {
+        x: (previous.x + current.x) / 2,
+        y: (previous.y + current.y) / 2,
+      };
+      ctx.quadraticCurveTo(previous.x, previous.y, midPoint.x, midPoint.y);
+    }
+  }
+
+  ctx.stroke();
+  ctx.restore();
+}
+
+function redraw(canvas: HTMLCanvasElement, strokes: readonly WhiteboardStroke[]) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const stroke of strokes) drawStroke(ctx, stroke);
+}
+
+function createScene(strokes: readonly WhiteboardStroke[]): WhiteboardScene {
+  return {
+    version: 1,
+    elements: strokes,
+    appState: { viewBackgroundColor: "#0b0b10" },
+  };
 }
 
 export default function WhiteboardEditor({
@@ -108,212 +89,120 @@ export default function WhiteboardEditor({
   onTitleChange,
   onSceneChange,
 }: WhiteboardEditorProps) {
-  const initialSceneRef = useRef<WhiteboardScene>(
-    page.whiteboard ?? {
-      version: 1,
-      elements: [],
-      appState: { viewBackgroundColor: "#f5f5f8" },
-    },
-  );
-  const initialScene = initialSceneRef.current;
-  const [api, setApi] = useState<ExcalidrawImperativeAPI | null>(null);
-  const [saveState, setSaveState] = useState<SaveState>("saved");
-  const [notice, setNotice] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistReadyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const readyToPersistRef = useRef(false);
-  const pendingSceneRef = useRef<WhiteboardScene | null>(null);
-  const lastSignatureRef = useRef(sceneSignature(initialScene));
-  const onSceneChangeRef = useRef(onSceneChange);
+  const currentStrokeRef = useRef<WhiteboardStroke | null>(null);
+  const strokesRef = useRef<WhiteboardStroke[]>(getInitialStrokes(page.whiteboard));
+  const [strokes, setStrokes] = useState<WhiteboardStroke[]>(strokesRef.current);
+  const [tool, setTool] = useState<Tool>("pen");
+  const [color, setColor] = useState(COLORS[0]);
+  const [saveState, setSaveState] = useState<SaveState>("saved");
+
+  const scheduleSave = useCallback(
+    (nextStrokes: readonly WhiteboardStroke[]) => {
+      setSaveState("pending");
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        onSceneChange(createScene(nextStrokes));
+        setSaveState("saved");
+      }, SAVE_DELAY_MS);
+    },
+    [onSceneChange],
+  );
+
+  const resizeCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    const viewport = viewportRef.current;
+    if (!canvas || !viewport) return;
+
+    const rect = viewport.getBoundingClientRect();
+    const ratio = window.devicePixelRatio || 1;
+    canvas.width = Math.max(1, Math.floor(rect.width * ratio));
+    canvas.height = Math.max(1, Math.floor(rect.height * ratio));
+    canvas.style.width = `${rect.width}px`;
+    canvas.style.height = `${rect.height}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    redraw(canvas, strokesRef.current);
+  }, []);
 
   useEffect(() => {
-    onSceneChangeRef.current = onSceneChange;
-  }, [onSceneChange]);
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+    return () => window.removeEventListener("resize", resizeCanvas);
+  }, [resizeCanvas]);
 
-  const showNotice = useCallback((message: string) => {
-    setNotice(message);
-    window.setTimeout(() => {
-      setNotice((current) => (current === message ? null : current));
-    }, 3200);
-  }, []);
-
-  const flushPendingScene = useCallback((updateSaveState = true) => {
-    const scene = pendingSceneRef.current;
-    if (!scene) return;
-
-    pendingSceneRef.current = null;
-    lastSignatureRef.current = sceneSignature(scene);
-    onSceneChangeRef.current(scene);
-    if (updateSaveState) setSaveState("saved");
-  }, []);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas) redraw(canvas, strokes);
+  }, [strokes]);
 
   useEffect(
     () => () => {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      if (persistReadyTimerRef.current !== null) {
-        window.clearTimeout(persistReadyTimerRef.current);
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        onSceneChange(createScene(strokesRef.current));
       }
-      flushPendingScene(false);
     },
-    [flushPendingScene],
+    [onSceneChange],
   );
 
-  const handleApiReady = useCallback(
-    (nextApi: ExcalidrawImperativeAPI) => {
-      setApi(nextApi);
-      readyToPersistRef.current = false;
-      persistReadyTimerRef.current = window.setTimeout(() => {
-        nextApi.updateScene({
-          appState: {
-            ...initialScene.appState,
-            viewBackgroundColor: initialScene.appState.viewBackgroundColor ?? "#f5f5f8",
-            ...(initialScene.elements.length === 0 ? { currentItemStrokeColor: "#c4b5fd" } : {}),
-          },
-          captureUpdate: CaptureUpdateAction.NEVER,
-        });
-        readyToPersistRef.current = true;
-      }, 80);
-    },
-    [initialScene],
-  );
+  const getPoint = useCallback((event: React.PointerEvent<HTMLCanvasElement>): DrawingPoint => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+  }, []);
 
-  const handleSceneChange = useCallback(
-    (elements: readonly ExcalidrawElement[], appState: AppState) => {
-      if (!readyToPersistRef.current) return;
-      if (hasUnsupportedElements(elements)) {
-        api?.updateScene({
-          elements: elements.filter(
-            (element) =>
-              element.type !== "image" &&
-              element.type !== "embeddable" &&
-              element.type !== "iframe",
-          ),
-          captureUpdate: CaptureUpdateAction.NEVER,
-        });
-        showNotice("Images and embeds are disabled for this whiteboard");
-        return;
-      }
-
-      const nextScene: WhiteboardScene = {
-        version: 1,
-        elements,
-        appState: compactAppState(appState),
+  const beginStroke = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      const point = getPoint(event);
+      currentStrokeRef.current = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        type: "stroke",
+        tool,
+        color: tool === "eraser" ? "#000000" : color,
+        size: tool === "eraser" ? ERASER_SIZE : PEN_SIZE,
+        points: [point],
       };
-      const nextSignature = sceneSignature(nextScene);
-
-      if (
-        nextSignature === lastSignatureRef.current ||
-        nextSignature === (pendingSceneRef.current ? sceneSignature(pendingSceneRef.current) : null)
-      ) {
-        return;
-      }
-
-      pendingSceneRef.current = nextScene;
-      setSaveState("pending");
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = setTimeout(flushPendingScene, SAVE_DELAY_MS);
     },
-    [api, flushPendingScene, showNotice],
+    [color, getPoint, tool],
   );
 
-  const fitBoard = useCallback(() => {
-    if (!api) return;
-    api.scrollToContent(undefined, {
-      fitToViewport: true,
-      viewportZoomFactor: 0.76,
-      animate: true,
-      duration: 320,
-    });
-  }, [api]);
-
-  const exportExcalidraw = useCallback(() => {
-    if (!api) return;
-    const json = serializeAsJSON(api.getSceneElements(), api.getAppState(), NO_FILES, "local");
-    downloadBlob(
-      new Blob([json], { type: "application/vnd.excalidraw+json" }),
-      `${safeFilename(page.title)}.excalidraw`,
-    );
-    showNotice("Whiteboard exported");
-  }, [api, page.title, showNotice]);
-
-  const exportPng = useCallback(async () => {
-    if (!api || api.getSceneElements().length === 0) {
-      showNotice("Add something to the board before exporting");
-      return;
-    }
-    const appState = api.getAppState();
-    const blob = await exportToBlob({
-      elements: api.getSceneElements(),
-      appState: {
-        ...appState,
-        exportBackground: true,
-        exportWithDarkMode: false,
-      },
-      files: null,
-      mimeType: "image/png",
-    });
-    downloadBlob(blob, `${safeFilename(page.title)}.png`);
-    showNotice("PNG exported");
-  }, [api, page.title, showNotice]);
-
-  const exportSvg = useCallback(async () => {
-    if (!api || api.getSceneElements().length === 0) {
-      showNotice("Add something to the board before exporting");
-      return;
-    }
-    const appState = api.getAppState();
-    const svg = await exportToSvg({
-      elements: api.getSceneElements(),
-      appState: {
-        ...appState,
-        exportBackground: true,
-        exportWithDarkMode: false,
-      },
-      files: null,
-      exportPadding: 24,
-    });
-    const markup = new XMLSerializer().serializeToString(svg);
-    downloadBlob(
-      new Blob([markup], { type: "image/svg+xml;charset=utf-8" }),
-      `${safeFilename(page.title)}.svg`,
-    );
-    showNotice("SVG exported");
-  }, [api, page.title, showNotice]);
-
-  const importScene = useCallback(
-    async (file: File) => {
-      if (!api) return;
-      try {
-        const restored = await loadFromBlob(file, null, null);
-        if (hasUnsupportedElements(restored.elements)) {
-          showNotice("This MVP cannot import boards containing images or embeds");
-          return;
-        }
-        api.updateScene({
-          elements: restored.elements,
-          appState: restored.appState,
-          captureUpdate: CaptureUpdateAction.IMMEDIATELY,
-        });
-        showNotice("Whiteboard imported");
-      } catch {
-        showNotice("That file is not a valid Excalidraw whiteboard");
-      }
+  const continueStroke = useCallback(
+    (event: React.PointerEvent<HTMLCanvasElement>) => {
+      const current = currentStrokeRef.current;
+      if (!current) return;
+      current.points.push(getPoint(event));
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      redraw(canvas, [...strokesRef.current, current]);
     },
-    [api, showNotice],
+    [getPoint],
   );
 
-  const initialData = useMemo(
-    () => ({
-      elements: initialScene.elements,
-      appState: initialScene.appState,
-      scrollToContent: false,
-    }),
-    [initialScene],
-  );
+  const endStroke = useCallback(() => {
+    const current = currentStrokeRef.current;
+    if (!current) return;
+    currentStrokeRef.current = null;
+    const nextStrokes = [...strokesRef.current, current];
+    strokesRef.current = nextStrokes;
+    setStrokes(nextStrokes);
+    scheduleSave(nextStrokes);
+  }, [scheduleSave]);
+
+  const clearBoard = useCallback(() => {
+    strokesRef.current = [];
+    setStrokes([]);
+    scheduleSave([]);
+  }, [scheduleSave]);
 
   return (
-    <main className="knowledge-whiteboard flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#0e0e14]">
+    <main className="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-[#0e0e14]">
       <header className="relative z-20 flex min-h-[66px] shrink-0 items-center gap-3 border-b border-white/[0.08] bg-black/45 pl-16 pr-4 backdrop-blur-xl md:px-5">
         <div className="min-w-0 flex-1">
           <Breadcrumbs pageId={page.id} />
@@ -350,152 +239,99 @@ export default function WhiteboardEditor({
             </>
           )}
         </div>
-
-        <button
-          type="button"
-          onClick={fitBoard}
-          disabled={!api}
-          title="Fit whiteboard to view"
-          className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-3 text-[11px] font-medium text-white/55 transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-40"
-        >
-          <Scan className="size-3.5" />
-          <span className="hidden md:inline">Fit</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={!api}
-          title="Import an Excalidraw file"
-          className="flex h-9 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-3 text-[11px] font-medium text-white/55 transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-40"
-        >
-          <Upload className="size-3.5" />
-          <span className="hidden lg:inline">Import</span>
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".excalidraw,application/json,application/vnd.excalidraw+json"
-          className="hidden"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void importScene(file);
-            event.target.value = "";
-          }}
-        />
-
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={!api}
-              aria-label="Export whiteboard"
-              className="flex h-9 items-center gap-2 rounded-xl border border-violet-400/20 bg-violet-500/10 px-3 text-[11px] font-medium text-violet-100 transition-colors hover:bg-violet-500/20 disabled:opacity-40"
-            >
-              <Download className="size-3.5" />
-              <span className="hidden lg:inline">Export</span>
-              <ChevronDown className="size-3 text-violet-200/55" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="w-52 border-white/10 bg-[#171720]/95 p-1.5 text-white/70 shadow-2xl backdrop-blur-xl"
-          >
-            <DropdownMenuItem
-              onSelect={exportExcalidraw}
-              className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.07] focus:text-white"
-            >
-              <FileJson />
-              Excalidraw file
-            </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-white/[0.07]" />
-            <DropdownMenuItem
-              onSelect={() => void exportPng()}
-              className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.07] focus:text-white"
-            >
-              <ImageDown />
-              PNG image
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => void exportSvg()}
-              className="rounded-lg px-2.5 py-2 text-xs focus:bg-white/[0.07] focus:text-white"
-            >
-              <Shapes />
-              SVG vector
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {notice && (
-          <div className="pointer-events-none absolute right-4 top-[calc(100%+10px)] rounded-xl border border-white/10 bg-[#1a1924]/95 px-3 py-2 text-[11px] text-white/75 shadow-2xl backdrop-blur-xl">
-            {notice}
-          </div>
-        )}
       </header>
 
-      <div className="min-h-0 flex-1">
-        <Excalidraw
-          excalidrawAPI={handleApiReady}
-          initialData={initialData}
-          name={page.title || "Untitled whiteboard"}
-          theme="dark"
-          handleKeyboardGlobally={false}
-          autoFocus={false}
-          validateEmbeddable={() => false}
-          UIOptions={{
-            canvasActions: {
-              export: false,
-              loadScene: false,
-              saveAsImage: false,
-              saveToActiveFile: false,
-              toggleTheme: false,
-            },
-            tools: { image: false },
-          }}
-          onChange={handleSceneChange}
-          onPaste={(_, event) => {
-            const containsImage = Array.from(event?.clipboardData.files ?? []).some((file) =>
-              file.type.startsWith("image/"),
-            );
-            if (containsImage) {
-              showNotice("Images are disabled for this whiteboard");
-              return false;
-            }
-            return true;
-          }}
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/[0.07] bg-[#0a0a0f]/80 px-4 py-3 md:px-5">
+        <ToolButton active={tool === "pen"} onClick={() => setTool("pen")} label="Pen">
+          <PenLine className="size-4" />
+        </ToolButton>
+        <ToolButton active={tool === "eraser"} onClick={() => setTool("eraser")} label="Eraser">
+          <Eraser className="size-4" />
+        </ToolButton>
+        <div className="mx-1 h-7 w-px bg-white/10" />
+        <div className="flex items-center gap-1.5" aria-label="Pen color">
+          {COLORS.map((swatch) => (
+            <button
+              key={swatch}
+              type="button"
+              onClick={() => {
+                setColor(swatch);
+                setTool("pen");
+              }}
+              aria-label={`Use ${swatch} ink`}
+              className={`size-7 rounded-full border transition-transform ${
+                color === swatch && tool === "pen"
+                  ? "scale-110 border-white shadow-[0_0_18px_rgba(196,181,253,0.45)]"
+                  : "border-white/15 hover:scale-105"
+              }`}
+              style={{ backgroundColor: swatch }}
+            />
+          ))}
+        </div>
+        <div className="min-w-3 flex-1" />
+        <button
+          type="button"
+          onClick={clearBoard}
+          disabled={strokes.length === 0}
+          className="flex h-9 items-center gap-2 rounded-xl border border-red-300/15 bg-red-500/10 px-3 text-[11px] font-medium text-red-100/75 transition-colors hover:bg-red-500/20 hover:text-red-50 disabled:cursor-not-allowed disabled:opacity-35"
         >
-          <WelcomeScreen>
-            <WelcomeScreen.Center>
-              <WelcomeScreen.Center.Logo>
-                <span className="flex items-center justify-center gap-2 text-sm font-semibold tracking-[0.08em]">
-                  <PenLine className="size-5 text-violet-300" />
-                  KNOWLEDGE OS
-                </span>
-              </WelcomeScreen.Center.Logo>
-              <WelcomeScreen.Center.Heading>
-                Think spatially. Keep it loose.
-              </WelcomeScreen.Center.Heading>
-              <WelcomeScreen.Center.Menu>
-                <WelcomeScreen.Center.MenuItem
-                  icon={<PenLine />}
-                  onSelect={() => api?.setActiveTool({ type: "freedraw" })}
-                >
-                  Start drawing
-                </WelcomeScreen.Center.MenuItem>
-                <WelcomeScreen.Center.MenuItem
-                  icon={<Shapes />}
-                  onSelect={() => api?.setActiveTool({ type: "rectangle" })}
-                >
-                  Build a flow
-                </WelcomeScreen.Center.MenuItem>
-              </WelcomeScreen.Center.Menu>
-            </WelcomeScreen.Center>
-            <WelcomeScreen.Hints.ToolbarHint>
-              Shapes, arrows, text, and frames live up here
-            </WelcomeScreen.Hints.ToolbarHint>
-          </WelcomeScreen>
-        </Excalidraw>
+          {strokes.length === 0 ? <RotateCcw className="size-3.5" /> : <Trash2 className="size-3.5" />}
+          Clear
+        </button>
+      </div>
+
+      <div ref={viewportRef} className="relative min-h-0 flex-1 overflow-hidden bg-[#08080a]">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(139,92,246,0.16),transparent_42%),linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:100%_100%,32px_32px,32px_32px]" />
+        {strokes.length === 0 && (
+          <div className="pointer-events-none absolute left-1/2 top-1/2 max-w-sm -translate-x-1/2 -translate-y-1/2 text-center">
+            <div className="mx-auto flex size-14 items-center justify-center rounded-2xl border border-violet-300/20 bg-violet-500/10 text-violet-200/80">
+              <PenLine className="size-7" />
+            </div>
+            <h2 className="mt-4 text-lg font-semibold text-white/80">Draw freely</h2>
+            <p className="mt-2 text-sm text-white/38">
+              Sketch ideas with the pen, erase loose marks, and let autosave keep the board in your workspace.
+            </p>
+          </div>
+        )}
+        <canvas
+          ref={canvasRef}
+          className="relative z-10 block h-full w-full touch-none cursor-crosshair"
+          onPointerDown={beginStroke}
+          onPointerMove={continueStroke}
+          onPointerUp={endStroke}
+          onPointerCancel={endStroke}
+          onPointerLeave={endStroke}
+          aria-label="Whiteboard drawing canvas"
+        />
       </div>
     </main>
+  );
+}
+
+function ToolButton({
+  active,
+  onClick,
+  label,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[11px] font-medium transition-colors ${
+        active
+          ? "border-violet-300/25 bg-violet-500/18 text-violet-100"
+          : "border-white/10 bg-white/[0.035] text-white/55 hover:bg-white/[0.07] hover:text-white"
+      }`}
+    >
+      {children}
+      {label}
+    </button>
   );
 }

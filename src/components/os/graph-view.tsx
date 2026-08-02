@@ -17,6 +17,8 @@ import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
 export interface GraphNode {
   id: string;
   label: string;
+  avatarImage?: string;
+  icon?: string;
   /** Optional starting position (world space). Auto-arranged in a grid if omitted. */
   x?: number;
   y?: number;
@@ -389,7 +391,7 @@ export default function GraphView({
                     minHeight: CARD_MIN_HEIGHT,
                     opacity: isDimmed ? 0.38 : 1,
                     background: isHovered || isSelected || isDragging ? "#1B1B20" : "#151519",
-                    borderColor: isSelected || isDragging ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.08)",
+                    borderColor: isSelected || isDragging ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.09)",
                     cursor: isDragging ? "grabbing" : "grab",
                     zIndex: isDragging ? 30 : isSelected ? 2 : 1,
                     transform: isDragging ? "scale(1.035) translateY(-1px)" : "scale(1)",
@@ -414,13 +416,19 @@ export default function GraphView({
                   />
                   <div className="flex h-full items-start gap-2.5 px-3.5 py-3">
                     <span
-                      className="flex h-5 w-5 flex-none items-center justify-center rounded-[5px] font-mono text-[10px] font-semibold"
+                      className="flex h-5 w-5 flex-none items-center justify-center rounded-[5px] font-mono text-[10px] font-semibold overflow-hidden"
                       style={{
                         background: "rgba(255,255,255,0.06)",
                         color: isHovered || isSelected || isDragging ? "#c9c1fb" : "#71717a",
                       }}
                     >
-                      {initialOf(n.label)}
+                      {n.avatarImage ? (
+                        <img src={n.avatarImage} alt="" className="h-full w-full object-cover" />
+                      ) : n.icon ? (
+                        <span>{n.icon}</span>
+                      ) : (
+                        <span>{initialOf(n.label)}</span>
+                      )}
                     </span>
                     <span
                       className="pt-px text-[13px] font-medium leading-snug text-zinc-200"

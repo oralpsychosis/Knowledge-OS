@@ -12,6 +12,8 @@ export default function GraphCanvas({ onClose }: { onClose: () => void }) {
     const ns: GraphNode[] = pages.map((p) => ({
       id: p.id,
       label: p.title || "Untitled",
+      avatarImage: p.avatarImage,
+      icon: p.icon,
       x: p.graphX,
       y: p.graphY,
     }));

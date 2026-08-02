@@ -1,21 +1,25 @@
-"use client";
-
 import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-react";
+import dagre from "@dagrejs/dagre";
+
+/* ------------------------------------------------------------------ */
+/*  Public types                                                       */
+/* ------------------------------------------------------------------ */
 
 export interface GraphNode {
   id: string;
   label: string;
-  group?: string;
-  color?: string;
+  avatarImage?: string;
+  icon?: string;
   x?: number;
   y?: number;
 }
@@ -30,468 +34,354 @@ export interface GraphViewProps {
   edges: GraphEdge[];
   onNodeOpen?: (node: GraphNode) => void;
   onNodeSelect?: (node: GraphNode | null) => void;
+  onNodeMove?: (id: string, pos: { x: number; y: number }) => void;
   selectedId?: string | null;
   className?: string;
-  staticLayout?: boolean;
+  title?: ReactNode | null;
+  showHints?: boolean;
 }
 
-interface SimNode extends GraphNode {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  fx: number | null;
-  fy: number | null;
-}
+/* ------------------------------------------------------------------ */
+/*  Layout constants                                                   */
+/* ------------------------------------------------------------------ */
 
-const GROUP_PALETTE = [
-  "#8b7cf6", // violet
-  "#6ea8fe", // indigo-blue
-  "#f472b6", // pink
-  "#34d399", // teal
-  "#fbbf24", // amber
-  "#f87171", // red
-];
-
-function colorForGroup(group: string | undefined, fallback: string): string {
-  if (!group) return fallback;
-  let hash = 0;
-  for (let i = 0; i < group.length; i++) hash = (hash * 31 + group.charCodeAt(i)) | 0;
-  return GROUP_PALETTE[Math.abs(hash) % GROUP_PALETTE.length];
-}
-
-const DEFAULT_COLOR = "#8b7cf6";
+const CARD_WIDTH = 200;
+const CARD_MIN_HEIGHT = 60;
+const NODE_SEP = 80;
+const RANK_SEP = 120;
 const MIN_SCALE = 0.15;
-const MAX_SCALE = 3;
+const MAX_SCALE = 2.5;
+
+function initialOf(label: string) {
+  const trimmed = label.trim();
+  return trimmed ? trimmed[0].toUpperCase() : "?";
+}
+
+/* ------------------------------------------------------------------ */
+/*  Component                                                          */
+/* ------------------------------------------------------------------ */
 
 export default function GraphView({
   nodes,
   edges,
   onNodeOpen,
   onNodeSelect,
+  onNodeMove,
   selectedId = null,
   className = "",
-  staticLayout = false,
+  title = "Workspace Map",
+  showHints = true,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const [size, setSize] = useState({ width: 0, height: 0 });
-  const [view, setView] = useState({ x: 0, y: 0, k: 0.8 });
-  const simNodesRef = useRef<Map<string, SimNode>>(new Map());
-  const [tick, setTick] = useState(0);
-
+  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [view, setView] = useState({ x: 0, y: 0, k: 0.75 });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(selectedId);
   const selected = selectedId !== undefined && selectedId !== null ? selectedId : internalSelectedId;
 
-  const draggingRef = useRef<{ id: string; pointerId: number; moved: boolean } | null>(null);
-  const panRef = useRef<{ pointerId: number; startX: number; startY: number; viewX: number; viewY: number } | null>(null);
+  const dragRef = useRef<{
+    id: string;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+    startNodeX: number;
+    startNodeY: number;
+    moved: boolean;
+  } | null>(null);
+  
+  const panRef = useRef<{ 
+    pointerId: number; 
+    startX: number; 
+    startY: number; 
+    viewX: number; 
+    viewY: number 
+  } | null>(null);
+
+  /* ---------------- hierarchical layout (Dagre) --------------------- */
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const el = containerRef.current;
-    if (!el) return;
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: "TB", nodesep: NODE_SEP, ranksep: RANK_SEP });
+    g.setDefaultEdgeLabel(() => ({}));
 
-    const update = () => {
-      const rect = el.getBoundingClientRect();
-      setSize({ width: rect.width, height: rect.height });
-    };
-    update();
-
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const map = simNodesRef.current;
-    const existingIds = new Set(nodes.map((n) => n.id));
-
-    for (const id of Array.from(map.keys())) {
-      if (!existingIds.has(id)) map.delete(id);
-    }
-
-    const ringRadius = 200;
-    nodes.forEach((n, i) => {
-      const existing = map.get(n.id);
-      if (existing) {
-        existing.label = n.label;
-        existing.group = n.group;
-        existing.color = n.color;
-        return;
-      }
-      const angle = (i / Math.max(nodes.length, 1)) * Math.PI * 2;
-      map.set(n.id, {
-        ...n,
-        x: n.x ?? Math.cos(angle) * ringRadius + (Math.random() - 0.5) * 40,
-        y: n.y ?? Math.sin(angle) * ringRadius + (Math.random() - 0.5) * 40,
-        vx: 0,
-        vy: 0,
-        fx: null,
-        fy: null,
-      });
+    nodes.forEach((n) => {
+      g.setNode(n.id, { width: CARD_WIDTH, height: CARD_MIN_HEIGHT });
     });
 
-    setTick((t) => t + 1);
-  }, [nodes]);
+    edges.forEach((e) => {
+      g.setEdge(e.source, e.target);
+    });
 
-  useEffect(() => {
-    if (typeof window === "undefined" || staticLayout) return;
+    dagre.layout(g);
 
-    let raf = 0;
-    let alpha = 1;
-    const alphaMin = 0.005;
-    const alphaDecay = 0.02;
-
-    const step = () => {
-      const map = simNodesRef.current;
-      const list = Array.from(map.values());
-
-      if (alpha > alphaMin && list.length > 0) {
-        const REPEL = 2500;
-        for (let i = 0; i < list.length; i++) {
-          for (let j = i + 1; j < list.length; j++) {
-            const a = list[i];
-            const b = list[j];
-            let dx = a.x - b.x;
-            let dy = a.y - b.y;
-            let distSq = dx * dx + dy * dy;
-            if (distSq < 0.01) {
-              dx = Math.random() - 0.5;
-              dy = Math.random() - 0.5;
-              distSq = 0.01;
-            }
-            const force = (REPEL / distSq) * alpha;
-            const dist = Math.sqrt(distSq);
-            const fx = (dx / dist) * force;
-            const fy = (dy / dist) * force;
-            a.vx += fx;
-            a.vy += fy;
-            b.vx -= fx;
-            b.vy -= fy;
-          }
-        }
-
-        const LINK_DIST = 120;
-        const LINK_STRENGTH = 0.06;
-        for (const e of edges) {
-          const a = map.get(e.source);
-          const b = map.get(e.target);
-          if (!a || !b) continue;
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const diff = (dist - LINK_DIST) * LINK_STRENGTH * alpha;
-          const fx = (dx / dist) * diff;
-          const fy = (dy / dist) * diff;
-          a.vx += fx;
-          a.vy += fy;
-          b.vx -= fx;
-          b.vy -= fy;
-        }
-
-        const CENTER = 0.015;
-        for (const n of list) {
-          n.vx -= n.x * CENTER * alpha;
-          n.vy -= n.y * CENTER * alpha;
-        }
-
-        const DAMPING = 0.82;
-        for (const n of list) {
-          if (n.fx !== null && n.fy !== null) {
-            n.x = n.fx;
-            n.y = n.fy;
-            n.vx = 0;
-            n.vy = 0;
-            continue;
-          }
-          n.vx *= DAMPING;
-          n.vy *= DAMPING;
-          n.x += n.vx;
-          n.y += n.vy;
-        }
-
-        alpha *= 1 - alphaDecay;
-        setTick((t) => t + 1);
-      }
-
-      raf = window.requestAnimationFrame(step);
-    };
-
-    raf = window.requestAnimationFrame(step);
-    return () => window.cancelAnimationFrame(raf);
-  }, [edges, staticLayout]);
-
-  const screenToWorld = useCallback(
-    (clientX: number, clientY: number) => {
-      const svg = svgRef.current;
-      if (!svg) return { x: 0, y: 0 };
-      const rect = svg.getBoundingClientRect();
-      const sx = clientX - rect.left;
-      const sy = clientY - rect.top;
-      return {
-        x: (sx - size.width / 2 - view.x) / view.k,
-        y: (sy - size.height / 2 - view.y) / view.k,
-      };
-    },
-    [size.width, size.height, view]
-  );
-
-  const zoomBy = useCallback(
-    (factor: number, pivot?: { x: number; y: number }) => {
-      setView((v) => {
-        const nextK = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.k * factor));
-        if (!pivot) return { ...v, k: nextK };
-        const worldX = (pivot.x - size.width / 2 - v.x) / v.k;
-        const worldY = (pivot.y - size.height / 2 - v.y) / v.k;
-        return {
-          k: nextK,
-          x: pivot.x - size.width / 2 - worldX * nextK,
-          y: pivot.y - size.height / 2 - worldY * nextK,
+    const nextPositions: Record<string, { x: number; y: number }> = {};
+    nodes.forEach((n) => {
+      if (n.x !== undefined && n.y !== undefined) {
+        nextPositions[n.id] = { x: n.x, y: n.y };
+      } else {
+        const dagreNode = g.node(n.id);
+        nextPositions[n.id] = { 
+          x: dagreNode.x - CARD_WIDTH / 2, 
+          y: dagreNode.y - CARD_MIN_HEIGHT / 2 
         };
-      });
-    },
-    [size.width, size.height]
-  );
-
-  const handleWheel = useCallback(
-    (e: ReactWheelEvent<SVGSVGElement>) => {
-      e.preventDefault();
-      const svg = svgRef.current;
-      if (!svg) return;
-      const rect = svg.getBoundingClientRect();
-      const pivot = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-      const factor = Math.exp(-e.deltaY * 0.0015);
-      zoomBy(factor, pivot);
-    },
-    [zoomBy]
-  );
-
-  const resetView = useCallback(() => setView({ x: 0, y: 0, k: 0.8 }), []);
-
-  const handleBackgroundPointerDown = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>) => {
-      if (e.target !== svgRef.current) return;
-      panRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, viewX: view.x, viewY: view.y };
-      (e.target as Element).setPointerCapture(e.pointerId);
-    },
-    [view.x, view.y]
-  );
-
-  const handlePointerMove = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>) => {
-      const pan = panRef.current;
-      if (pan && pan.pointerId === e.pointerId) {
-        const dx = e.clientX - pan.startX;
-        const dy = e.clientY - pan.startY;
-        setView((v) => ({ ...v, x: pan.viewX + dx, y: pan.viewY + dy }));
-        return;
       }
+    });
 
-      const drag = draggingRef.current;
-      if (drag && drag.pointerId === e.pointerId) {
-        drag.moved = true;
-        const world = screenToWorld(e.clientX, e.clientY);
-        const n = simNodesRef.current.get(drag.id);
-        if (n) {
-          n.fx = world.x;
-          n.fy = world.y;
-          setTick((t) => t + 1);
-        }
-      }
-    },
-    [screenToWorld]
-  );
+    setPositions(nextPositions);
+  }, [nodes, edges]);
 
-  const selectNode = useCallback(
-    (id: string, open: boolean) => {
-      if (selectedId === undefined || selectedId === null) setInternalSelectedId(id);
-      const node = nodes.find((n) => n.id === id) ?? null;
-      onNodeSelect?.(node);
-      if (open && node) onNodeOpen?.(node);
-    },
-    [nodes, onNodeOpen, onNodeSelect, selectedId]
-  );
+  /* ---------------- zoom / pan --------------------------------------- */
 
-  const handlePointerUp = useCallback(
-    (e: ReactPointerEvent<SVGSVGElement>) => {
-      if (panRef.current?.pointerId === e.pointerId) {
-        panRef.current = null;
-      }
-      const drag = draggingRef.current;
-      if (drag && drag.pointerId === e.pointerId) {
-        const n = simNodesRef.current.get(drag.id);
-        if (n) {
-          n.fx = null;
-          n.fy = null;
-        }
-        if (!drag.moved) {
-          selectNode(drag.id, true);
-        }
-        draggingRef.current = null;
-      }
-    },
-    [selectNode]
-  );
-
-  const handleNodePointerDown = useCallback((e: ReactPointerEvent<SVGGElement>, id: string) => {
-    e.stopPropagation();
-    draggingRef.current = { id, pointerId: e.pointerId, moved: false };
-    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  const zoomBy = useCallback((factor: number, pivot?: { x: number; y: number }) => {
+    const el = containerRef.current;
+    setView((v) => {
+      const nextK = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.k * factor));
+      if (!pivot || !el) return { ...v, k: nextK };
+      const rect = el.getBoundingClientRect();
+      const px = pivot.x - rect.left;
+      const py = pivot.y - rect.top;
+      const worldX = (px - v.x) / v.k;
+      const worldY = (py - v.y) / v.k;
+      return { k: nextK, x: px - worldX * nextK, y: py - worldY * nextK };
+    });
   }, []);
 
-  const simList = useMemo(() => Array.from(simNodesRef.current.values()), [tick]);
-  const simMap = simNodesRef.current;
+  const handleWheel = useCallback((e: ReactWheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const factor = Math.exp(-e.deltaY * 0.0015);
+    zoomBy(factor, { x: e.clientX, y: e.clientY });
+  }, [zoomBy]);
 
-  const neighborIds = useMemo(() => {
-    if (!hoveredId && !selected) return null;
-    const focus = hoveredId ?? selected;
-    const s = new Set<string>();
-    for (const e of edges) {
-      if (e.source === focus) s.add(e.target);
-      if (e.target === focus) s.add(e.source);
+  const fitToNodes = useCallback(() => {
+    const el = containerRef.current;
+    const posEntries = Object.entries(positions);
+    if (!el || posEntries.length === 0) return;
+    
+    const rect = el.getBoundingClientRect();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    
+    posEntries.forEach(([_, p]) => {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x + CARD_WIDTH);
+      maxY = Math.max(maxY, p.y + CARD_MIN_HEIGHT);
+    });
+
+    const w = maxX - minX || 1;
+    const h = maxY - minY || 1;
+    const padding = 100;
+    const k = Math.min(1.2, Math.max(MIN_SCALE, Math.min(rect.width / (w + padding), rect.height / (h + padding))));
+    
+    setView({ 
+      k, 
+      x: rect.width / 2 - (minX + w / 2) * k, 
+      y: rect.height / 2 - (minY + h / 2) * k 
+    });
+  }, [positions]);
+
+  // Auto-fit on first load when positions are ready
+  const initialFitPerformed = useRef(false);
+  useEffect(() => {
+    if (!initialFitPerformed.current && Object.keys(positions).length > 0) {
+      fitToNodes();
+      initialFitPerformed.current = true;
     }
+  }, [positions, fitToNodes]);
+
+  /* ---------------- interactions ------------------------------------ */
+
+  const handleBackgroundPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    panRef.current = { 
+      pointerId: e.pointerId, 
+      startX: e.clientX, 
+      startY: e.clientY, 
+      viewX: view.x, 
+      viewY: view.y 
+    };
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const pan = panRef.current;
+    if (pan && pan.pointerId === e.pointerId) {
+      const dx = e.clientX - pan.startX;
+      const dy = e.clientY - pan.startY;
+      setView((v) => ({ ...v, x: pan.viewX + dx, y: pan.viewY + dy }));
+      return;
+    }
+
+    const drag = dragRef.current;
+    if (drag && drag.pointerId === e.pointerId) {
+      const dxScreen = e.clientX - drag.startClientX;
+      const dyScreen = e.clientY - drag.startClientY;
+      if (Math.abs(dxScreen) > 2 || Math.abs(dyScreen) > 2) drag.moved = true;
+      
+      const nextX = drag.startNodeX + dxScreen / view.k;
+      const nextY = drag.startNodeY + dyScreen / view.k;
+      
+      setPositions(prev => ({
+        ...prev,
+        [drag.id]: { x: nextX, y: nextY }
+      }));
+    }
+  };
+
+  const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (panRef.current?.pointerId === e.pointerId) panRef.current = null;
+    
+    const drag = dragRef.current;
+    if (drag && drag.pointerId === e.pointerId) {
+      if (drag.moved) {
+        const pos = positions[drag.id];
+        if (pos) onNodeMove?.(drag.id, pos);
+      } else {
+        const node = nodes.find(n => n.id === drag.id);
+        if (node) {
+          if (selectedId === undefined) setInternalSelectedId(node.id);
+          onNodeSelect?.(node);
+          onNodeOpen?.(node);
+        }
+      }
+      dragRef.current = null;
+      setDraggingId(null);
+    }
+  };
+
+  const activeId = hoveredId ?? selected;
+  const neighborIds = useMemo(() => {
+    if (!activeId) return null;
+    const s = new Set<string>();
+    edges.forEach((e) => {
+      if (e.source === activeId) s.add(e.target);
+      if (e.target === activeId) s.add(e.source);
+    });
     return s;
-  }, [edges, hoveredId, selected]);
+  }, [edges, activeId]);
 
   return (
-    <div ref={containerRef} className={`relative h-full w-full overflow-hidden bg-[#08080A] ${className}`}>
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.35]"
-        style={{
-          backgroundImage: "radial-gradient(circle, rgba(139,124,246,0.18) 1px, transparent 1px)",
-          backgroundSize: "28px 28px",
-          backgroundPosition: `${view.x % 28}px ${view.y % 28}px`,
-        }}
-      />
+    <div className={`relative flex h-full w-full flex-col overflow-hidden bg-[#0B0B0D] ${className}`}>
+      {title && (
+        <div className="flex h-11 flex-none items-center justify-between border-b border-white/[0.06] px-4">
+          <div className="flex items-center gap-2">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#8b7cf6]/70" />
+            <span className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+              {title}
+            </span>
+          </div>
+        </div>
+      )}
 
-      {size.width > 0 && size.height > 0 && (
-        <svg
-          ref={svgRef}
-          className="absolute inset-0 h-full w-full cursor-grab touch-none active:cursor-grabbing"
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={containerRef}
+          className="absolute inset-0 touch-none cursor-grab active:cursor-grabbing"
           onWheel={handleWheel}
           onPointerDown={handleBackgroundPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
           onPointerLeave={handlePointerUp}
         >
-          <defs>
-            <filter id="graph-glow" x="-100%" y="-100%" width="300%" height="300%">
-              <feGaussianBlur stdDeviation="5.5" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-            <filter id="graph-glow-soft" x="-100%" y="-100%" width="300%" height="300%">
-              <feGaussianBlur stdDeviation="2.5" result="blur" />
-              <feMerge>
-                <feMergeNode in="blur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-
-          <g transform={`translate(${size.width / 2 + view.x} ${size.height / 2 + view.y}) scale(${view.k})`}>
-            <g>
+          <div
+            className="absolute left-0 top-0"
+            style={{ 
+              transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, 
+              transformOrigin: "0 0" 
+            }}
+          >
+            {/* straight lines are cleaner and easier to read */}
+            <svg className="absolute overflow-visible" style={{ pointerEvents: "none" }}>
               {edges.map((e, i) => {
-                const a = simMap.get(e.source);
-                const b = simMap.get(e.target);
+                const a = positions[e.source];
+                const b = positions[e.target];
                 if (!a || !b) return null;
-                const isFocused =
-                  hoveredId === e.source ||
-                  hoveredId === e.target ||
-                  selected === e.source ||
-                  selected === e.target;
-                const mx = (a.x + b.x) / 2;
-                const my = (a.y + b.y) / 2;
+
+                const isFocused = activeId === e.source || activeId === e.target;
+                
                 return (
-                  <path
+                  <line
                     key={`${e.source}-${e.target}-${i}`}
-                    d={`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`}
-                    fill="none"
-                    stroke={isFocused ? "#a78bfa" : "#2a2a33"}
-                    strokeWidth={isFocused ? 1.8 : 1}
-                    strokeOpacity={isFocused ? 0.95 : 0.45}
-                    style={{ transition: "stroke 180ms ease, stroke-opacity 180ms ease" }}
+                    x1={a.x + CARD_WIDTH / 2}
+                    y1={a.y + CARD_MIN_HEIGHT}
+                    x2={b.x + CARD_WIDTH / 2}
+                    y2={b.y}
+                    stroke={isFocused ? "#8b7cf6" : "rgba(255,255,255,0.08)"}
+                    strokeWidth={isFocused ? 2 : 1}
                   />
                 );
               })}
-            </g>
+            </svg>
 
-            <g>
-              {simList.map((n) => {
-                const color = n.color ?? colorForGroup(n.group, DEFAULT_COLOR);
-                const isHovered = hoveredId === n.id;
-                const isSelected = selected === n.id;
-                const isDimmed = !!neighborIds && !neighborIds.has(n.id) && !isHovered && !isSelected;
-                const radius = isSelected ? 10 : isHovered ? 9 : 7;
+            {nodes.map((n) => {
+              const pos = positions[n.id];
+              if (!pos) return null;
+              
+              const isSelected = selected === n.id;
+              const isHovered = hoveredId === n.id;
+              const isDragging = draggingId === n.id;
+              // Much higher opacity for non-selected nodes
+              const isDimmed = !!neighborIds && !neighborIds.has(n.id) && !isHovered && !isSelected && !isDragging;
 
-                return (
-                  <g
-                    key={n.id}
-                    transform={`translate(${n.x} ${n.y})`}
-                    className="cursor-pointer"
-                    style={{ opacity: isDimmed ? 0.35 : 1, transition: "opacity 180ms ease" }}
-                    onPointerDown={(e) => handleNodePointerDown(e, n.id)}
-                    onPointerEnter={() => setHoveredId(n.id)}
-                    onPointerLeave={() => setHoveredId((h) => (h === n.id ? null : h))}
-                  >
-                    {(isSelected || isHovered) && (
-                      <circle r={radius + 8} fill={color} opacity={0.15} filter="url(#graph-glow)" />
-                    )}
-                    <circle
-                      r={radius}
-                      fill={color}
-                      opacity={isSelected || isHovered ? 1 : 0.85}
-                      filter={isSelected ? "url(#graph-glow-soft)" : undefined}
-                      stroke={isSelected ? "#ffffff" : "transparent"}
-                      strokeWidth={isSelected ? 1.5 : 0}
-                      style={{ transition: "r 150ms ease" }}
-                    />
-                    <text
-                      y={radius + 18}
-                      textAnchor="middle"
-                      fontSize={12}
-                      fontWeight={isSelected ? 600 : 400}
-                      fill={isHovered || isSelected ? "#ffffff" : "#94a3b8"}
-                      style={{ userSelect: "none", transition: "fill 180ms ease" }}
-                    >
+              return (
+                <div
+                  key={n.id}
+                  className="absolute select-none overflow-hidden rounded-xl border"
+                  style={{
+                    left: pos.x,
+                    top: pos.y,
+                    width: CARD_WIDTH,
+                    minHeight: CARD_MIN_HEIGHT,
+                    opacity: isDimmed ? 0.6 : 1,
+                    background: isHovered || isSelected || isDragging ? "#1B1B20" : "#121216",
+                    borderColor: isSelected || isDragging ? "rgba(139,124,246,0.6)" : "rgba(255,255,255,0.1)",
+                    cursor: isDragging ? "grabbing" : "grab",
+                    zIndex: isDragging ? 30 : isSelected ? 2 : 1,
+                    transition: isDragging ? "none" : "all 200ms ease",
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    dragRef.current = {
+                      id: n.id,
+                      pointerId: e.pointerId,
+                      startClientX: e.clientX,
+                      startClientY: e.clientY,
+                      startNodeX: pos.x,
+                      startNodeY: pos.y,
+                      moved: false,
+                    };
+                    setDraggingId(n.id);
+                    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+                  }}
+                  onPointerEnter={() => setHoveredId(n.id)}
+                  onPointerLeave={() => setHoveredId(h => h === n.id ? null : h)}
+                >
+                  <div className="flex h-full items-center gap-3 px-3.5 py-3">
+                    <span className="flex h-6 w-6 flex-none items-center justify-center rounded-[6px] bg-white/[0.05] overflow-hidden text-[11px] font-bold">
+                      {n.avatarImage ? (
+                        <img src={n.avatarImage} alt="" className="h-full w-full object-cover" />
+                      ) : n.icon ? (
+                        <span className="text-[14px]">{n.icon}</span>
+                      ) : (
+                        <span>{initialOf(n.label)}</span>
+                      )}
+                    </span>
+                    <span className="min-w-0 truncate text-[13px] font-medium text-zinc-200">
                       {n.label}
-                    </text>
-                  </g>
-                );
-              })}
-            </g>
-          </g>
-        </svg>
-      )}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
-      <div className="absolute bottom-6 right-6 flex flex-col gap-1 rounded-2xl border border-white/10 bg-black/40 p-1 backdrop-blur-xl">
-        <button
-          type="button"
-          onClick={() => zoomBy(1.25, { x: size.width / 2, y: size.height / 2 })}
-          className="flex size-9 items-center justify-center rounded-xl text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Zoom in"
-        >
-          <ZoomIn size={18} />
-        </button>
-        <button
-          type="button"
-          onClick={() => zoomBy(0.8, { x: size.width / 2, y: size.height / 2 })}
-          className="flex size-9 items-center justify-center rounded-xl text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Zoom out"
-        >
-          <ZoomOut size={18} />
-        </button>
-        <button
-          type="button"
-          onClick={resetView}
-          className="flex size-9 items-center justify-center rounded-xl text-white/50 transition-colors hover:bg-white/10 hover:text-white"
-          aria-label="Reset view"
-        >
-          <Maximize2 size={18} />
-        </button>
+        <div className="absolute bottom-4 right-4 flex flex-col gap-1 rounded-xl border border-white/[0.08] bg-[#121216]/80 p-1 backdrop-blur-md">
+          <button type="button" onClick={(e) => zoomBy(1.2, { x: e.clientX, y: e.clientY })} className="p-2 text-zinc-500 hover:text-white transition"><ZoomIn size={14} /></button>
+          <button type="button" onClick={(e) => zoomBy(0.8, { x: e.clientX, y: e.clientY })} className="p-2 text-zinc-500 hover:text-white transition"><ZoomOut size={14} /></button>
+          <button type="button" onClick={fitToNodes} className="p-2 text-zinc-500 hover:text-white transition"><Maximize2 size={14} /></button>
+        </div>
       </div>
     </div>
   );

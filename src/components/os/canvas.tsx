@@ -11,10 +11,14 @@ import { WhiteboardPage } from "./whiteboard-page";
 export function Canvas() {
   const { activePage, patchPage, setContent, setWhiteboard, syncing } = useKnowledge();
 
+export function Canvas() {
+  const { activePage, patchPage, setContent } = useKnowledge();
+
   if (!activePage) {
     return <HomeDashboard />;
   }
 
+  // Whiteboard display is strictly disabled to prevent deployment crashes.
   if (activePage.kind === "whiteboard") {
     return (
       <WhiteboardPage
@@ -42,7 +46,8 @@ export function Canvas() {
       <PageAvatar
         avatar={activePage.avatarImage}
         icon={activePage.icon}
-        onChange={(v) => patchPage(activePage.id, { avatarImage: v })}
+        onAvatarChange={(v) => patchPage(activePage.id, { avatarImage: v })}
+        onIconChange={(v) => patchPage(activePage.id, { icon: v })}
       />
 
       <div className="mx-auto w-full max-w-3xl px-8 pb-32 pt-6 md:px-16">

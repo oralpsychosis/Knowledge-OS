@@ -1,12 +1,25 @@
 import { motion } from "motion/react";
+import { lazy, Suspense } from "react";
+import { LoaderCircle } from "lucide-react";
 import { useKnowledge } from "@/store/knowledge";
 import { CoverBanner } from "./cover-banner";
 import { PageAvatar } from "./page-avatar";
 import { Breadcrumbs } from "./breadcrumbs";
 import { EditableTitle } from "./editable-title";
 import { HomeDashboard } from "./home-dashboard";
-import { BlockEditor } from "../editor/block-editor";
-import { WhiteboardPage } from "./whiteboard-page";
+
+// Lazy load heavy page content
+const BlockEditor = lazy(() => import("../editor/block-editor").then(m => ({ default: m.BlockEditor })));
+const WhiteboardPage = lazy(() => import("./whiteboard-page").then(m => ({ default: m.WhiteboardPage })));
+
+function ContentFallback() {
+  return (
+    <div className="flex h-32 items-center justify-center gap-3 text-[11px] uppercase tracking-[0.2em] text-white/20">
+      <LoaderCircle className="size-4 animate-spin" />
+      Opening...
+    </div>
+  );
+}
 
 export function Canvas() {
   const { activePage, patchPage, setContent, setWhiteboard, syncing } = useKnowledge();
@@ -24,12 +37,14 @@ export function Canvas() {
         transition={{ duration: 0.2 }}
         className="flex h-full min-w-0 flex-1"
       >
-        <WhiteboardPage
-          page={activePage}
-          syncing={syncing}
-          onTitleChange={(title) => patchPage(activePage.id, { title })}
-          onSceneChange={(scene) => setWhiteboard(activePage.id, scene)}
-        />
+        <Suspense fallback={<div className="flex-1 bg-[#0e0e14]" />}>
+          <WhiteboardPage
+            page={activePage}
+            syncing={syncing}
+            onTitleChange={(title) => patchPage(activePage.id, { title })}
+            onSceneChange={(scene) => setWhiteboard(activePage.id, scene)}
+          />
+        </Suspense>
       </motion.div>
     );
   }
@@ -63,11 +78,13 @@ export function Canvas() {
           />
         </div>
         <div className="mt-6">
-          <BlockEditor
-            pageId={activePage.id}
-            content={activePage.content}
-            onChange={(c) => setContent(activePage.id, c)}
-          />
+          <Suspense fallback={<ContentFallback />}>
+            <BlockEditor
+              pageId={activePage.id}
+              content={activePage.content}
+              onChange={(c) => setContent(activePage.id, c)}
+            />
+          </Suspense>
         </div>
       </div>
     </motion.main>

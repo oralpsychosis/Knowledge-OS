@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, lazy, Suspense } from "react";
 import { motion } from "motion/react";
 import {
   ChevronDown,
@@ -17,6 +17,7 @@ import {
   Search,
   Waypoints,
   X,
+  LoaderCircle,
 } from "lucide-react";
 import { useKnowledge } from "@/store/knowledge";
 import { useAuth } from "@/lib/auth-context";
@@ -30,12 +31,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { PageTree } from "./page-tree";
 import { FocusAudio } from "./focus-audio";
-import { SearchModal } from "./search-modal";
-import { TemplatesModal } from "./templates-modal";
-import { GraphModal } from "./graph-modal";
-import { KeysModal } from "./keys-modal";
+
+// Lazy load heavy components to prevent SSR crashes
+const PageTree = lazy(() => import("./page-tree").then(m => ({ default: m.PageTree })));
+const SearchModal = lazy(() => import("./search-modal").then(m => ({ default: m.SearchModal })));
+const TemplatesModal = lazy(() => import("./templates-modal").then(m => ({ default: m.TemplatesModal })));
+const GraphModal = lazy(() => import("./graph-modal").then(m => ({ default: m.GraphModal })));
+const KeysModal = lazy(() => import("./keys-modal").then(m => ({ default: m.KeysModal })));
 
 type SidebarTool = "search" | "templates" | "map" | "shortcuts" | null;
 
@@ -50,6 +53,15 @@ interface SidebarProps {
 
 const navButtonClass =
   "flex h-9 w-full items-center gap-2 rounded-lg px-2.5 text-[13px] transition-colors";
+
+function TreeFallback() {
+  return (
+    <div className="flex h-20 items-center justify-center gap-2 text-[10px] uppercase tracking-widest text-white/20">
+      <LoaderCircle className="size-3 animate-spin" />
+      Loading...
+    </div>
+  );
+}
 
 export function Sidebar({
   collapsed,
@@ -292,7 +304,9 @@ export function Sidebar({
               </span>
             </div>
             <div className="os-scroll min-h-0 flex-1 overflow-y-auto px-2 pb-3">
-              <PageTree onNavigate={finishNavigation} />
+              <Suspense fallback={<TreeFallback />}>
+                <PageTree onNavigate={finishNavigation} />
+              </Suspense>
             </div>
           </>
         )}
@@ -330,13 +344,12 @@ export function Sidebar({
         </div>
       </motion.aside>
 
-      <SearchModal open={activeTool === "search"} onOpenChange={(open) => !open && closeTool()} />
-      <TemplatesModal
-        open={activeTool === "templates"}
-        onOpenChange={(open) => !open && closeTool()}
-      />
-      <GraphModal open={activeTool === "map"} onOpenChange={(open) => !open && closeTool()} />
-      <KeysModal open={activeTool === "shortcuts"} onOpenChange={(open) => !open && closeTool()} />
+      <Suspense fallback={null}>
+        {activeTool === "search" && <SearchModal open={true} onOpenChange={(open) => !open && closeTool()} />}
+        {activeTool === "templates" && <TemplatesModal open={true} onOpenChange={(open) => !open && closeTool()} />}
+        {activeTool === "map" && <GraphModal open={true} onOpenChange={(open) => !open && closeTool()} />}
+        {activeTool === "shortcuts" && <KeysModal open={true} onOpenChange={(open) => !open && closeTool()} />}
+      </Suspense>
     </TooltipProvider>
   );
 }

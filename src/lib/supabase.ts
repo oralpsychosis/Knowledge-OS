@@ -4,7 +4,11 @@ import type { KnowledgeOSState } from "./types";
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const supabase = url && key ? createClient(url, key) : null;
+// Defensive check: ensure strings exist and URL is valid before attempting initialization.
+// This prevents crashes if variables are missing or set to placeholder strings like "undefined".
+const canInitialize = Boolean(url && key && url.startsWith("http"));
+
+export const supabase = canInitialize ? createClient(url!, key!) : null;
 
 /* ------------------------------------------------------------------ */
 /*  Auth helpers                                                       */
@@ -29,15 +33,28 @@ export async function signOut() {
   await supabase.auth.signOut();
 }
 
+/**
+ * Monitors authentication state. If Supabase is not configured, it immediately
+ * signals a null user so the application can finish loading in local-only mode.
+ */
 export function onAuthChange(cb: (user: import("@supabase/supabase-js").User | null) => void) {
-  if (!supabase) return () => {};
+  if (!supabase) {
+    // Critical fix: notify the listener immediately so AuthProvider.loading becomes false.
+    cb(null);
+    return () => {};
+  }
+  
   const { data } = supabase.auth.onAuthStateChange((_event, session) => {
     cb(session?.user ?? null);
   });
+  
   // Check current session
   supabase.auth.getSession().then(({ data: { session } }) => {
     cb(session?.user ?? null);
+  }).catch(() => {
+    cb(null);
   });
+  
   return () => data?.subscription.unsubscribe();
 }
 

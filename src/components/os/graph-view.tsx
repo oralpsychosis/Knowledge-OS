@@ -1,5 +1,3 @@
-"use client";
-
 import {
   useCallback,
   useEffect,
@@ -58,25 +56,32 @@ const GRID_GAP_Y = 44;
 const GRID_PADDING = 48;
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 2.5;
-const EDGE_BOW = 22; // how far edges arc away from a straight line, in world px
 
 function initialOf(label: string) {
   const trimmed = label.trim();
   return trimmed ? trimmed[0].toUpperCase() : "?";
 }
 
-/** Gentle arced connector instead of a dead-straight line — consistently
- *  bows to one side so edges read as deliberate curves, not default lines,
- *  and so overlapping edges between nearby cards visually separate. */
-function edgePath(ax: number, ay: number, bx: number, by: number) {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len = Math.hypot(dx, dy) || 1;
-  const nx = -dy / len;
-  const ny = dx / len;
-  const mx = (ax + bx) / 2 + nx * EDGE_BOW;
-  const my = (ay + by) / 2 + ny * EDGE_BOW;
-  return `M ${ax} ${ay} Q ${mx} ${my} ${bx} ${by}`;
+/** Where a ray from a rectangle's center toward (towardX, towardY) exits the
+ *  rectangle's boundary — so a line lands on the bottom edge when the other
+ *  card is below it, the side edge when it's beside it, etc., instead of
+ *  cutting through the middle of the box. */
+function anchorOnRect(
+  rect: { x: number; y: number; w: number; h: number },
+  towardX: number,
+  towardY: number
+) {
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  const dx = towardX - cx;
+  const dy = towardY - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  const halfW = rect.w / 2;
+  const halfH = rect.h / 2;
+  const scaleX = dx !== 0 ? halfW / Math.abs(dx) : Infinity;
+  const scaleY = dy !== 0 ? halfH / Math.abs(dy) : Infinity;
+  const scale = Math.min(scaleX, scaleY);
+  return { x: cx + dx * scale, y: cy + dy * scale };
 }
 
 /* ------------------------------------------------------------------ */
@@ -350,39 +355,28 @@ export default function GraphView({
               className="absolute overflow-visible"
               style={{ left: 0, top: 0, width: 1, height: 1, pointerEvents: "none" }}
             >
-              <defs>
-                <linearGradient id="edge-gradient" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#8b7cf6" />
-                  <stop offset="100%" stopColor="#6ea8fe" />
-                </linearGradient>
-              </defs>
               {edges.map((e, i) => {
                 const a = positions.get(e.source);
                 const b = positions.get(e.target);
                 if (!a || !b) return null;
-                const ax = a.x + CARD_WIDTH / 2;
-                const ay = a.y + CARD_MIN_HEIGHT / 2;
-                const bx = b.x + CARD_WIDTH / 2;
-                const by = b.y + CARD_MIN_HEIGHT / 2;
+                const rectA = { x: a.x, y: a.y, w: CARD_WIDTH, h: CARD_MIN_HEIGHT };
+                const rectB = { x: b.x, y: b.y, w: CARD_WIDTH, h: CARD_MIN_HEIGHT };
+                const centerA = { x: a.x + CARD_WIDTH / 2, y: a.y + CARD_MIN_HEIGHT / 2 };
+                const centerB = { x: b.x + CARD_WIDTH / 2, y: b.y + CARD_MIN_HEIGHT / 2 };
+                const start = anchorOnRect(rectA, centerB.x, centerB.y);
+                const end = anchorOnRect(rectB, centerA.x, centerA.y);
                 const isFocused = !!activeId && (e.source === activeId || e.target === activeId);
                 return (
-                  <g key={`${e.source}-${e.target}-${i}`}>
-                    <path
-                      d={edgePath(ax, ay, bx, by)}
-                      fill="none"
-                      stroke={isFocused ? "url(#edge-gradient)" : "#2b2b30"}
-                      strokeWidth={isFocused ? 1.6 : 1}
-                      strokeOpacity={isFocused ? 0.85 : 0.4}
-                      strokeLinecap="round"
-                      style={{ transition: "stroke-opacity 150ms ease" }}
-                    />
-                    {isFocused && (
-                      <>
-                        <circle cx={ax} cy={ay} r={2.5} fill="#8b7cf6" opacity={0.9} />
-                        <circle cx={bx} cy={by} r={2.5} fill="#6ea8fe" opacity={0.9} />
-                      </>
-                    )}
-                  </g>
+                  <line
+                    key={`${e.source}-${e.target}-${i}`}
+                    x1={start.x}
+                    y1={start.y}
+                    x2={end.x}
+                    y2={end.y}
+                    stroke={isFocused ? "rgba(161,155,224,0.5)" : "rgba(255,255,255,0.12)"}
+                    strokeWidth={1}
+                    style={{ transition: "stroke 150ms ease" }}
+                  />
                 );
               })}
             </svg>
@@ -406,8 +400,8 @@ export default function GraphView({
                     width: CARD_WIDTH,
                     minHeight: CARD_MIN_HEIGHT,
                     opacity: isDimmed ? 0.38 : 1,
-                    background: isHovered || isSelected || isDragging ? "rgba(255,255,255,0.055)" : "rgba(255,255,255,0.03)",
-                    borderColor: isSelected || isDragging ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.08)",
+                    background: isHovered || isSelected || isDragging ? "#1B1B20" : "#151519",
+                    borderColor: isSelected || isDragging ? "rgba(139,124,246,0.55)" : "rgba(255,255,255,0.09)",
                     cursor: isDragging ? "grabbing" : "grab",
                     zIndex: isDragging ? 30 : isSelected ? 2 : 1,
                     transform: isDragging ? "scale(1.035) translateY(-1px)" : "scale(1)",
